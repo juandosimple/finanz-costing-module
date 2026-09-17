@@ -1,0 +1,19 @@
+[workspace]
+members = ["src-tauri", "crates/pricing-engine"]
+resolver = "2"
+
+[workspace.dependencies]
+rust_decimal = { version = "1.43", features = ["serde-float"] }
+rust_decimal_macros = "1.40"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# serde aliases keep old saved projects readable; ts-rs doesn't need to know about them.
+ts-rs = { version = "12", features = ["no-serde-warnings"] }
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

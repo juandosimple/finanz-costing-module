@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  /* Brand tints, for the template tags and anything else that needs a soft fill. */
+  --color-accent-ink: var(--accent-ink);
+  --color-income: var(--income);
+  --color-accent-soft: var(--accent-soft);
+  --color-teal-ink: var(--teal-ink);
+  --color-teal-soft: var(--teal-soft);
+  --font-sans: "Archivo Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The brand's shapes are rounder than Tailwind's defaults. */
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+}
+
+/* Light tokens (validated chart palette: the categorical order passes CVD checks in both modes). */
+:root {
+  color-scheme: light;
+  --page: #fbfafc;
+  --surface: #ffffff;
+  --surface-2: #f2f0f7;
+  /* Cards and the sidebar sit on the page's violet wash, so they are translucent. */
+  --glass: rgba(255, 255, 255, 0.72);
+  --ink: #17141f;
+  --ink-2: #55506b;
+  --muted: #8c86a0;
+  --line: #e6e3ee;
+  --axis: #c6c1d4;
+  --accent: #6816ff;
+  --accent-ink: #4a0fb8;
+  --accent-soft: rgba(104, 22, 255, 0.09);
+  --income: #5b21d6;
+  --cost-soft: #efa3a3;
+  --teal-ink: #0b6f79;
+  --teal-soft: rgba(14, 154, 167, 0.1);
+  --good: #0b6b3a;
+  --bad: #b23a1f;
+  --warn: #8a5a00;
+  /* Categorical order for scenarios; fixed order, never cycled. */
+  --cat-1: #2a78d6;
+  --cat-2: #eb6834;
+  --cat-3: #1baf7a;
+  --cat-4: #eda100;
+  --cat-5: #e87ba4;
+  --cat-6: #008300;
+  --cat-7: #4a3aa7;
+  --cat-8: #e34948;
+}
+
+/*
+ * Dark tokens, declared twice on purpose: the media query covers the "System" theme,
+ * and the [data-theme="dark"] scope covers an explicit choice in Settings. The
+ * :not([data-theme="light"]) guard lets "Light" win over a dark operating system.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #100d18;
+    --surface: #1b1726;
+    --surface-2: #262034;
+    --glass: rgba(27, 23, 38, 0.66);
+    --ink: #ffffff;
+    --ink-2: #c9c4d9;
+    --muted: #9a93ad;
+    --line: #2f2842;
+    --axis: #3d3552;
+    --accent: #9b6bff;
+    --accent-ink: #cbb4ff;
+    --accent-soft: rgba(155, 107, 255, 0.16);
+    --income: #b69bff;
+    --cost-soft: #b06a6a;
+    --teal-ink: #5ed3dd;
+    --teal-soft: rgba(14, 154, 167, 0.2);
+    --good: #35c07a;
+    --bad: #f2795a;
+    --warn: #fab219;
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+    --cat-5: #d55181;
+    --cat-6: #008300;
+    --cat-7: #9085e9;
+    --cat-8: #e66767;
+  }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+  --page: #100d18;
+  --surface: #1b1726;
+  --surface-2: #262034;
+  --glass: rgba(27, 23, 38, 0.66);
+  --ink: #ffffff;
+  --ink-2: #c9c4d9;
+  --muted: #9a93ad;
+  --line: #2f2842;
+  --axis: #3d3552;
+  --accent: #9b6bff;
+  --accent-ink: #cbb4ff;
+  --accent-soft: rgba(155, 107, 255, 0.16);
+  --income: #b69bff;
+  --cost-soft: #b06a6a;
+  --teal-ink: #5ed3dd;
+  --teal-soft: rgba(14, 154, 167, 0.2);
+  --good: #35c07a;
+  --bad: #f2795a;
+  --warn: #fab219;
+  --cat-1: #3987e5;
+  --cat-2: #d95926;
+  --cat-3: #199e70;
+  --cat-4: #c98500;
+  --cat-5: #d55181;
+  --cat-6: #008300;
+  --cat-7: #9085e9;
+  --cat-8: #e66767;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/*
+ * Printing is how a quote leaves the app, so the report prints as a plain
+ * document: the app behind it is dropped, the page goes white whatever the
+ * theme is on screen, and no row is cut in half by a page break. The selectors
+ * repeat the two dark scopes above so this wins over them by source order.
+ */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    color-scheme: light;
+    --page: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --ink: #000000;
+    --ink-2: #333333;
+    --muted: #555555;
+    --line: #cccccc;
+    --good: #006300;
+    --bad: #c62f2f;
+  }
+
+  @page {
+    margin: 16mm;
+  }
+
+  html,
+  body {
+    height: auto;
+    background: #ffffff;
+    background-image: none;
+  }
+
+  .glass {
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* The app itself never prints: only the report, which lives outside #root. */
+  #root,
+  .report-hide {
+    display: none !important;
+  }
+
+  .report {
+    position: static !important;
+    overflow: visible !important;
+  }
+
+  .report-sheet {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .report-section {
+    break-inside: avoid;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+body {
+  margin: 0;
+  /* A soft violet wash in the corners, the way the brand screens are built. */
+  background-color: var(--page);
+  background-image:
+    radial-gradient(1000px 620px at 4% -12%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 66%),
+    radial-gradient(780px 560px at 100% 2%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 64%);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Frosted panel: cards, the sidebar, anything floating over the wash. */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(120%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+}

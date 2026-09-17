@@ -1,0 +1,14 @@
+[package]
+name = "pricing-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Cost and pricing engine: pure logic, no Tauri dependencies"
+
+[dependencies]
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+serde = { workspace = true }
+ts-rs = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

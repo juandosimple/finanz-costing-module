@@ -1,0 +1,214 @@
+{
+  "model": "llama3.2:3b",
+  "url": "http://192.168.0.250:11434",
+  "summary": {
+    "basic": "4/5",
+    "secondary": "4/5",
+    "finance": "2/6",
+    "phd": "1/4"
+  },
+  "total": 11,
+  "run_at": "2026-09-16 12:56",
+  "results": [
+    {
+      "level": "basic",
+      "id": "B1",
+      "question": "A shop sells pens at 3 for 2 pounds. How many pounds do 18 pens cost?",
+      "expected": 12,
+      "answer": 12.0,
+      "correct": true,
+      "seconds": 15.7,
+      "working": "To find the cost of 18 pens, first find the cost of 1 pen. Since 3 pens cost 2 pounds, 1 pen costs 2/3 pounds. Multiply this by 18 to find the total cost: (2/3) * 18 = 12 } answer: 12 }assistant"
+    },
+    {
+      "level": "basic",
+      "id": "B2",
+      "question": "A train leaves at 09:40 and arrives at 13:15 the same day. How many minutes is the trip?",
+      "expected": 215,
+      "answer": 215.0,
+      "correct": true,
+      "seconds": 15.9,
+      "working": "To find the duration of the trip, we need to calculate the difference between the arrival and departure times. The train leaves at 09:40 and arrives at 13:15. We can start by finding the difference in hours: 13:15 - 09:40 = 3 hours 35 minutes. Now, we can convert the hours to minutes: 3 hours * 60 minutes/hour = 180 minutes. Adding this to the 35 minutes, we get: 180 minutes + 35 minutes = 215 minutes"
+    },
+    {
+      "level": "basic",
+      "id": "B3",
+      "question": "Tom has 250 pounds. He spends 35% of it, then gives one fifth of what is left to his sister. How many pounds does he keep?",
+      "expected": 130.0,
+      "answer": 130.0,
+      "correct": true,
+      "seconds": 13.9,
+      "working": "Tom has 250 pounds. He spends 35% of it, which is 0.35 * 250 = 87.5 pounds. He is left with 250 - 87.5 = 162.5 pounds. He gives one fifth of what is left to his sister, which is 162.5 / 5 = 32.5 pounds. He is left with 162.5 - 32.5 = 130 pounds."
+    },
+    {
+      "level": "basic",
+      "id": "B4",
+      "question": "12 workers build a wall in 10 days. Working at the same rate, how many days do 15 workers need?",
+      "expected": 8.0,
+      "answer": 7.0,
+      "correct": false,
+      "seconds": 25.5,
+      "working": "To find the number of days, we need to calculate the total work done by the 12 workers in 10 days. Let's assume the rate of work per worker per day is x. Then, the total work done by 12 workers in 10 days is 12x * 10 = 120x. Since the work is completed, the total work is 1. So, 120x = 1. Solving for x, we get x = 1/120. Now, we need to find the number of days required for 15 workers to complete the same work. Let's assume the number of days required is y. Then, the total work done by 15 workers in y days is 15y. Since the work is the same, we can set up the equation: 15y = 1. Solving for y, we get y = 1/15"
+    },
+    {
+      "level": "basic",
+      "id": "B5",
+      "question": "A recipe for 4 people needs 300 g of flour. How many grams are needed for 10 people?",
+      "expected": 750.0,
+      "answer": 750.0,
+      "correct": true,
+      "seconds": 5.6,
+      "working": "To find the amount of flour needed for 10 people, we need to multiply the amount needed for 4 people by 10/4"
+    },
+    {
+      "level": "secondary",
+      "id": "S1",
+      "question": "Solve for x: 3x - 7 = 2x + 11.",
+      "expected": 18,
+      "answer": 18.0,
+      "correct": true,
+      "seconds": 5.9,
+      "working": "3x - 7 = 2x + 11\n3x - 2x = 11 + 7\nx = 18"
+    },
+    {
+      "level": "secondary",
+      "id": "S2",
+      "question": "A price rises 20% and then falls 20%. What is the net change in percent? Use a negative number for a decrease.",
+      "expected": -4.0,
+      "answer": 4.0,
+      "correct": false,
+      "seconds": 17.5,
+      "working": "To find the net change, first calculate the price after the 20% increase and then the price after the 20% decrease. \n\n Original price = 100 \n\n Price after 20% increase = 100 + (100 x 0.20) = 120 \n\n Price after 20% decrease = 120 - (120 x 0.20) = 120 - 24 = 96 \n\n Net change = 96 - 100 = -4 \n\n Net change percentage = (-4 / 100) x 100 = -4% \n"
+    },
+    {
+      "level": "secondary",
+      "id": "S3",
+      "question": "What is the sum of the interior angles of a hexagon, in degrees?",
+      "expected": 720,
+      "answer": 720.0,
+      "correct": true,
+      "seconds": 10.3,
+      "working": "A hexagon has 6 sides. To find the sum of the interior angles, we can use the formula (n-2) * 180, where n is the number of sides. Plugging in n = 6, we get (6-2) * 180 = 4 * 180 = 720"
+    },
+    {
+      "level": "secondary",
+      "id": "S4",
+      "question": "What is the larger root of x^2 - 5x + 6 = 0?",
+      "expected": 3,
+      "answer": 3.0,
+      "correct": true,
+      "seconds": 26.3,
+      "working": "To find the roots of the quadratic equation x^2 - 5x + 6 = 0, we can use the quadratic formula: x = (-b \u00b1 \u221a(b^2 - 4ac)) / 2a. In this case, a = 1, b = -5, and c = 6. Plugging these values into the formula, we get: x = (5 \u00b1 \u221a((-5)^2 - 4(1)(6))) / 2(1). Simplifying further, we get: x = (5 \u00b1 \u221a(25 - 24)) / 2, x = (5 \u00b1 \u221a1) / 2, x = (5 \u00b1 1) / 2. This gives us two possible roots: x = (5 + 1) / 2 = 3 and x = (5 - 1) / 2 = 2. The larger root is 3"
+    },
+    {
+      "level": "secondary",
+      "id": "S5",
+      "question": "A geometric sequence starts at 3 and each term doubles. What is the sum of the first 8 terms?",
+      "expected": 765,
+      "answer": 765.0,
+      "correct": true,
+      "seconds": 19.6,
+      "working": "The formula for the sum of the first n terms of a geometric sequence is: Sn = a * (1 - r^n) / (1 - r) where a is the first term and r is the common ratio. In this case, a = 3 and r = 2. We need to find the sum of the first 8 terms, so n = 8. Plugging these values into the formula, we get: S8 = 3 * (1 - 2^8) / (1 - 2) = 3 * (1 - 256) / (-1) = 3 * (-255) / (-1) = 765"
+    },
+    {
+      "level": "finance",
+      "id": "F1",
+      "question": "A platform has fixed costs of 81 per month, shared equally across 5 buildings, plus a cost of 1 per month for each building. What is the yearly cost of one building?",
+      "expected": 206.4,
+      "answer": 206.4,
+      "correct": true,
+      "seconds": 10.7,
+      "working": "Fixed costs per month: 81 / 5 = 16.2. Add the cost of 1 per month for each building: 16.2 + 1 = 17.2. Multiply by 12 to get the yearly cost: 17.2 * 12 = 206.4"
+    },
+    {
+      "level": "finance",
+      "id": "F2",
+      "question": "A building costs 206.40 a year to serve. A payment fee of 2.9% is taken from the price, and we want to keep a 35% margin on the price after costs and the fee. What yearly price must we charge? Round to 2 decimals.",
+      "expected": 332.3671,
+      "answer": 157.95,
+      "correct": false,
+      "seconds": 23.8,
+      "working": "Let's denote the price as P. The payment fee is 2.9% of P, which is 0.029P. The yearly cost is P - 0.029P = 0.971P. We want to keep a 35% margin on the price after costs and the fee, so the selling price is 0.971P + 0.35(0.971P). We set this equal to P and solve for P.\n0.971P + 0.35(0.971P) = P\n0.971P + 0.33935P = P\n1.31035P = P\n1.31035 = 1\nP = 206.40 / 1.31035\nP = 157.95"
+    },
+    {
+      "level": "finance",
+      "id": "F3",
+      "question": "A service has fixed costs of 972 per year. Each client building pays 120 per year and costs 12 per year to serve. What is the smallest whole number of buildings needed to not lose money?",
+      "expected": 9,
+      "answer": 10.0,
+      "correct": false,
+      "seconds": 25.2,
+      "working": "To find the smallest whole number of buildings needed to not lose money, we need to find the point at which the total revenue from the buildings exceeds the total costs (fixed costs + costs of serving the buildings). Let's denote the number of buildings as x. The total revenue from the buildings is 120x. The total costs are 972 (fixed costs) + 12x (costs of serving the buildings). We want to find the smallest whole number of buildings where the total revenue exceeds the total costs. So, we set up the inequality: 120x > 972 + 12x. Subtracting 12x from both sides gives us: 108x > 972. Dividing both sides by 108 gives us: x > 972 / 108. x > 9. This means that we need at least 10 buildings to not lose money."
+    },
+    {
+      "level": "finance",
+      "id": "F4",
+      "question": "An investment costs 10,000 today and returns 4,000 at the end of each of the next 3 years. At an 8% annual discount rate, what is its net present value? Round to 2 decimals.",
+      "expected": 308.3879,
+      "answer": 1669.17,
+      "correct": false,
+      "seconds": 45.5,
+      "working": "Step 1: Calculate the present value of the first return at the end of year 1\nPresent value = Return / (1 + Discount rate)^Time\n= 4000 / (1 + 0.08)^1\n= 4000 / 1.08\n= 3705.93\n\nStep 2: Calculate the present value of the second return at the end of year 2\nPresent value = Return / (1 + Discount rate)^Time\n= 4000 / (1 + 0.08)^2\n= 4000 / 1.1664\n= 3439.31\n\nStep 3: Calculate the present value of the third return at the end of year 3\nPresent value = Return / (1 + Discount rate)^Time\n= 4000 / (1 + 0.08)^3\n= 4000 / 1.2597\n= 3185.59\n\nStep 4: Calculate the present value of the initial investment\nPresent value = -Initial investment / (1 + Discount rate)^Time\n= -10000 / (1 + 0.08)^0\n= -10000 / 1\n= -10000\n\nStep 5: Calculate the net present value by summing up the present values of all cash flows\nNet present value = Present value of first return + Present value of second return + Present value of third return + Present value of initial investment\n= 3705.93 + 3439.31 + 3185.59 - 10000\n= -1669.17"
+    },
+    {
+      "level": "finance",
+      "id": "F5",
+      "question": "5,000 is deposited at 6% annual interest compounded monthly. What is the balance after 2 years? Round to 2 decimals.",
+      "expected": 5635.7989,
+      "answer": 5631.15,
+      "correct": false,
+      "seconds": 12.8,
+      "working": "A = P(1 + r/n)^(nt)\nA = 5000(1 + 0.06/12)^(12*2)\nA = 5000(1 + 0.005)^24\nA = 5000(1.005)^24\nA = 5000 * 1.12683\nA = 5631.15"
+    },
+    {
+      "level": "finance",
+      "id": "F6",
+      "question": "A hardware unit costs 2,000 and sells for 5,000. What is the profit margin as a percentage of the selling price?",
+      "expected": 60.0,
+      "answer": 60.0,
+      "correct": true,
+      "seconds": 16.2,
+      "working": "To find the profit margin as a percentage of the selling price, we need to first find the profit made on the sale of the unit. Profit = Selling Price - Cost Price\nProfit = 5000 - 2000\nProfit = 3000\nNow, we can find the profit margin as a percentage of the selling price:\nProfit Margin = (Profit / Selling Price) * 100\nProfit Margin = (3000 / 5000) * 100\nProfit Margin = 0.6 * 100\nProfit Margin = 60"
+    },
+    {
+      "level": "phd",
+      "id": "P1",
+      "question": "Evaluate the definite integral of x * e^x from 0 to 1.",
+      "expected": 1.0,
+      "answer": 1.71828,
+      "correct": false,
+      "seconds": 26.4,
+      "working": "To evaluate the definite integral of x * e^x from 0 to 1, we can use integration by parts. Let u = x and dv = e^x dx. Then, du = dx and v = e^x. The integral becomes: \u222b[0,1] x * e^x dx = \u222b[0,1] u * dv = [u * v] from 0 to 1 - \u222b[0,1] v * du = [x * e^x] from 0 to 1 - \u222b[0,1] e^x dx = [x * e^x] from 0 to 1 - [e^x] from 0 to 1 = (1 * e^1) - (0 * e^0) - (e^1) + (e^0) = e - 1"
+    },
+    {
+      "level": "phd",
+      "id": "P2",
+      "question": "What is the largest eigenvalue of the matrix [[2, 1], [1, 2]]?",
+      "expected": 3,
+      "answer": 3.0,
+      "correct": true,
+      "seconds": 41.6,
+      "working": "To find the largest eigenvalue of the matrix [[2, 1], [1, 2]], we need to calculate the characteristic equation and solve for the eigenvalues. The characteristic equation is given by |A - \u03bbI| = 0, where A is the matrix, \u03bb is the eigenvalue, and I is the identity matrix. For the given matrix, we have: \n\n [[2, 1], [1, 2]] - \u03bb \n [[2 - \u03bb, 1], [1, 2 - \u03bb]] \n\n The determinant of this matrix is: \n\n (2 - \u03bb)(2 - \u03bb) - 1 \n\n = \u03bb^2 - 4\u03bb + 3 \n\n = (\u03bb - 3)(\u03bb - 1) \n\n = 0 \n\n So, the characteristic equation is \u03bb^2 - 4\u03bb + 3 = 0. We can solve for the eigenvalues using the quadratic formula: \n\n \u03bb = (-b \u00b1 \u221a(b^2 - 4ac)) / 2a \n\n = (4 \u00b1 \u221a(16 - 12)) / 2 \n\n = (4 \u00b1 \u221a4) / 2 \n\n = (4 \u00b1 2) / 2 \n\n = 3 or 1 \n\n Therefore, the largest eigenvalue of the matrix [[2, 1], [1, 2]] is 3."
+    },
+    {
+      "level": "phd",
+      "id": "P3",
+      "question": "A disease affects 1% of people. A test detects it 99% of the time and gives a false positive 5% of the time. If a person tests positive, what is the probability, in percent, that they have the disease? Round to 2 decimals.",
+      "expected": 16.6667,
+      "answer": 1.67,
+      "correct": false,
+      "seconds": 48.7,
+      "working": "To find the probability that a person has the disease given that they test positive, we can use Bayes' theorem. Let's define the events as follows: D = having the disease, T = testing positive. We are given the following probabilities: P(D) = 0.01 (1% of people have the disease), P(T|D) = 0.99 (the test detects the disease 99% of the time), and P(T|D') = 0.05 (the test gives a false positive 5% of the time). We want to find P(D|T). Using Bayes' theorem, we can calculate P(D|T) as follows: P(D|T) = P(T|D) \times P(D) / P(T). We can calculate P(T) as follows: P(T) = P(T|D) \times P(D) + P(T|D') \times P(D'). P(D') = 1 - P(D) = 1 - 0.01 = 0.99. Now we can plug in the values: P(T) = 0.99 \times 0.01 + 0.05 \times 0.99 = 0.0099 + 0.0495 = 0.0594. Now we can calculate P(D|T): P(D|T) = 0.99 \times 0.01 / 0.0594 = 0.0167. To convert this to a percentage, we multiply by 100: 0.0167 \times 100 = 1.67%."
+    },
+    {
+      "level": "phd",
+      "id": "P4",
+      "question": "A substance has a half-life of 5,730 years. What percentage of it remains after 10,000 years? Round to 2 decimals.",
+      "expected": 29.8292,
+      "answer": 30.8,
+      "correct": false,
+      "seconds": 22.8,
+      "working": "To find the percentage of the substance remaining after 10,000 years, we need to calculate the number of half-lives that have passed. The half-life is 5,730 years, so we divide 10,000 by 5,730 to get the number of half-lives: 10,000 / 5,730 \u2248 1.74. Since each half-life reduces the amount of substance by half, we raise 1/2 to the power of 1.74 to find the fraction of the substance remaining: (1/2)^1.74 \u2248 0.308. To convert this to a percentage, we multiply by 100: 0.308 \u00d7 100 \u2248 30.8"
+    }
+  ]
+}
