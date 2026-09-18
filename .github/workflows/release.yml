@@ -50,9 +50,15 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Without these the bundles carry no signature and the in-app updater
+          # refuses them. Both are repository secrets.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-{1}', github.run_number, github.sha) }}
           releaseName: Finanz analyzer ${{ github.ref_type == 'tag' && github.ref_name || github.run_number }}
           releaseBody: "Unsigned builds. macOS: right-click the app and choose Open the first time. Windows: SmartScreen asks for More info → Run anyway."
           releaseDraft: false
+          # Publishes latest.json, which is what Settings → Updates reads.
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

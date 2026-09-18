@@ -1,10 +1,14 @@
+import { getVersion } from "@tauri-apps/api/app";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import clsx from "clsx";
-import { Monitor, Moon, RefreshCw, Sun } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Download, Monitor, Moon, RefreshCw, Sun } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AiProvider } from "../../bindings/AiProvider";
 import type { Currency } from "../../bindings/Currency";
 import type { Theme } from "../../bindings/Theme";
 import { Button, Card, Field, NumberField, Page, Select, TextInput } from "../../components/ui";
+import { errorMessage } from "../../lib/api";
 import { CURRENCIES, CURRENCY_LABELS } from "../../lib/labels";
 import { useApp } from "../../store";
 
@@ -209,7 +213,92 @@ export function SettingsPage() {
             Last updated: {rates.updated_at ?? "never"} · Source: {rates.source}
           </p>
         </Card>
+
+        <Updates />
       </div>
     </Page>
+  );
+}
+
+/**
+ * Updates the app in place: it downloads the new version, installs it over this
+ * one and restarts. Nothing is downloaded by hand and no installer is opened.
+ */
+function Updates() {
+  const [version, setVersion] = useState("");
+  const [state, setState] = useState<{
+    step: "idle" | "checking" | "none" | "found" | "downloading" | "error";
+    version?: string;
+    percent?: number;
+    message?: string;
+  }>({ step: "idle" });
+  const pending = useRef<Update | null>(null);
+
+  useEffect(() => {
+    void getVersion().then(setVersion);
+  }, []);
+
+  const look = async () => {
+    setState({ step: "checking" });
+    try {
+      const update = await check();
+      pending.current = update;
+      setState(update ? { step: "found", version: update.version } : { step: "none" });
+    } catch (e) {
+      setState({ step: "error", message: errorMessage(e) });
+    }
+  };
+
+  const install = async () => {
+    const update = pending.current;
+    if (!update) return;
+    setState({ step: "downloading", percent: 0 });
+    let total = 0;
+    let done = 0;
+    try {
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") total = event.data.contentLength ?? 0;
+        else if (event.event === "Progress") {
+          done += event.data.chunkLength;
+          setState({ step: "downloading", percent: total ? Math.round((done / total) * 100) : undefined });
+        } else if (event.event === "Finished") setState({ step: "downloading", percent: 100 });
+      });
+      // The new version is in place; the app comes back on it.
+      await relaunch();
+    } catch (e) {
+      setState({ step: "error", message: errorMessage(e) });
+    }
+  };
+
+  const busy = state.step === "checking" || state.step === "downloading";
+
+  return (
+    <Card
+      title="Updates"
+      description="A new version is installed over this one and the app restarts. There is no installer to download."
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-ink-2">Version {version || "—"}</span>
+        {state.step === "found" ? (
+          <Button variant="primary" onClick={() => void install()}>
+            <Download /> Install {state.version} and restart
+          </Button>
+        ) : (
+          <Button onClick={() => void look()} disabled={busy}>
+            <RefreshCw className={clsx(busy && "animate-spin")} />
+            {state.step === "checking" ? "Checking…" : "Check for updates"}
+          </Button>
+        )}
+      </div>
+
+      {state.step === "none" && <p className="mt-3 text-xs text-muted">This is the latest version.</p>}
+      {state.step === "downloading" && (
+        <p className="mt-3 text-xs text-muted">
+          {state.percent === undefined ? "Downloading…" : `Downloading ${state.percent}%`} · the app restarts on its
+          own when it finishes.
+        </p>
+      )}
+      {state.step === "error" && <p className="mt-3 text-xs text-bad">{state.message}</p>}
+    </Card>
   );
 }

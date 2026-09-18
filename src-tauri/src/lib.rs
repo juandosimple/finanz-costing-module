@@ -174,7 +174,14 @@ async fn refresh_rates(db: State<'_, Db>) -> Result<ExchangeRates, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // Settings updates the app in place and restarts it, so no installer
+            // is ever downloaded by hand.
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             app.manage(Db::open(&dir.join("analyzer.db"))?);

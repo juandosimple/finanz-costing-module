@@ -45,6 +45,10 @@ Some elements rule each other out, and the engine enforces it so two can never b
 
 These relations are re-applied whenever a project is opened, so a project saved before a rule existed obeys it too.
 
+## Updating
+
+Settings has an **Updates** card: it asks GitHub for the latest release, installs it over the running app and restarts — no installer is downloaded by hand. Releases are signed with a key that never leaves the machine that made it; the public half sits in `src-tauri/tauri.conf.json` and the private half is a repository secret used by the release workflow (`TAURI_SIGNING_PRIVATE_KEY`). A build without that secret produces installers the updater will refuse.
+
 ## Settings
 
 App-wide and saved in the local database: the **currency** every screen uses, the **theme** (System / Light / Dark) and reference **exchange rates**, editable or updated from open.er-api.com. Settings also picks who answers step 5: a local Ollama model (with its address and model name) or Claude. The **Anthropic API key** is the exception to "saved in the database": it goes to the macOS keychain, never to the database or a file.
