@@ -1,6 +1,6 @@
-# Builds the desktop app for macOS and Windows and attaches the installers to a
+# Builds the desktop app for macOS and Windows and publishes the installers as a
 # GitHub release. Tag a version (git tag v0.1.0 && git push --tags) or run it by
-# hand from the Actions tab.
+# hand from the Actions tab. The release goes out published, not as a draft.
 name: Release
 
 on:
@@ -54,5 +54,5 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}-{1}', github.run_number, github.sha) }}
           releaseName: Finanz analyzer ${{ github.ref_type == 'tag' && github.ref_name || github.run_number }}
           releaseBody: "Unsigned builds. macOS: right-click the app and choose Open the first time. Windows: SmartScreen asks for More info → Run anyway."
-          releaseDraft: true
+          releaseDraft: false
           args: ${{ matrix.args }}
