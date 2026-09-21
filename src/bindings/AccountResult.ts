@@ -15,6 +15,10 @@ stored_gb_end_of_year: number, cost_first_month: number, cost_last_month: number
  */
 subscription: StreamResult, 
 /**
+ * Year 1 of the subscription for all the plan's users together.
+ */
+all_users: StreamResult, 
+/**
  * Billed once, for one account.
  */
 onboarding: StreamResult, 

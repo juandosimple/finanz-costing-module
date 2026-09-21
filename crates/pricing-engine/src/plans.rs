@@ -75,6 +75,11 @@ pub struct Plan {
     /// Active projects the plan includes.
     #[ts(type = "number")]
     pub projects: Decimal,
+    /// Users the plan is sold to. Every user gets the whole plan, so the
+    /// subscription is simply multiplied by them.
+    #[serde(default = "one")]
+    #[ts(type = "number")]
+    pub users: Decimal,
     /// Storage a contractor account on this plan carries, in GB, after a year.
     #[serde(default)]
     #[ts(type = "number")]
@@ -95,6 +100,10 @@ pub struct Plan {
     pub onboarding: Vec<String>,
 }
 
+fn one() -> Decimal {
+    Decimal::ONE
+}
+
 /// One account type on one plan, over year 1.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -111,6 +120,8 @@ pub struct AccountResult {
     pub cost_last_month: Decimal,
     /// Year 1 of the subscription for one account.
     pub subscription: StreamResult,
+    /// Year 1 of the subscription for all the plan's users together.
+    pub all_users: StreamResult,
     /// Billed once, for one account.
     pub onboarding: StreamResult,
     /// Yearly price that would hit the project margin.
@@ -128,6 +139,8 @@ pub struct PlanResult {
     pub name: String,
     #[ts(type = "number")]
     pub projects: Decimal,
+    #[ts(type = "number")]
+    pub users: Decimal,
     pub onboarding_ids: Vec<String>,
     pub blocked: Vec<BlockedItem>,
     pub contractor: AccountResult,
@@ -140,6 +153,7 @@ pub fn default_plans(onboarding: &[String]) -> Vec<Plan> {
         id: id.into(),
         name: name.into(),
         projects,
+        users: Decimal::ONE,
         contractor_storage_gb: storage,
         consultant_storage_gb: storage,
         contractor_price: None,
@@ -191,6 +205,7 @@ pub(crate) fn plan_plans(project: &Project, subscription_room: Decimal, fee: Dec
                 position: index as u32 + 1,
                 name: plan.name.clone(),
                 projects: plan.projects.max(Decimal::ZERO),
+                users: plan.users.max(Decimal::ZERO),
                 onboarding_ids: selection.iter().map(|item| item.id.clone()).collect(),
                 blocked,
                 contractor: account(AccountType::Contractor, plan.contractor_price, plan.contractor_storage_gb),
@@ -240,6 +255,10 @@ fn plan_account(
         Some(PriceRule::Margin { percent }) => price_at(Decimal::ONE - fee - clamp01(percent)),
     };
     let subscription_price = price.unwrap_or_default() + annual_price;
+    let subscription = stream(year_cost, subscription_price, fee, Decimal::ONE);
+    // Built from the rounded figures, so N users are exactly N times one.
+    let users = plan.users.max(Decimal::ZERO);
+    let all_users = stream(subscription.cost * users, subscription.price * users, fee, Decimal::ONE);
 
     AccountResult {
         account: kind,
@@ -247,7 +266,8 @@ fn plan_account(
         stored_gb_end_of_year: ratio(uploaded * MONTHS),
         cost_first_month: money(month(Decimal::ONE)),
         cost_last_month: money(month(MONTHS)),
-        subscription: stream(year_cost, subscription_price, fee, Decimal::ONE),
+        subscription,
+        all_users,
         onboarding: stream(one_off_cost, one_off_price, fee, Decimal::ONE),
         suggested_price,
         price_is_manual: rule.is_some(),
@@ -370,6 +390,21 @@ mod tests {
         let before = plan_project(&p).plans[0].contractor.subscription.cost;
         p.usage.platform_fixed_monthly = dec!(100_000);
         assert_eq!(plan_project(&p).plans[0].contractor.subscription.cost, before);
+    }
+
+    #[test]
+    fn the_subscription_is_multiplied_by_the_plans_users() {
+        let mut p = contractors();
+        p.plans[0].users = dec!(5);
+        let result = plan_project(&p);
+        let basic = &plan(&result, "basic").contractor;
+
+        assert_eq!(basic.all_users.cost, basic.subscription.cost * dec!(5));
+        assert_eq!(basic.all_users.price, basic.subscription.price * dec!(5));
+        assert_eq!(basic.all_users.margin, basic.subscription.margin);
+        // A single user is the account itself.
+        let gold = &plan(&result, "gold").contractor;
+        assert_eq!(gold.all_users.price, gold.subscription.price);
     }
 
     #[test]

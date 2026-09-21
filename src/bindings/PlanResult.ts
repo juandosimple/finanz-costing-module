@@ -6,4 +6,4 @@ export type PlanResult = { plan_id: string,
 /**
  * 1-based place in the project's list.
  */
-position: number, name: string, projects: number, onboarding_ids: Array<string>, blocked: Array<BlockedItem>, contractor: AccountResult, consultant: AccountResult, };
+position: number, name: string, projects: number, users: number, onboarding_ids: Array<string>, blocked: Array<BlockedItem>, contractor: AccountResult, consultant: AccountResult, };

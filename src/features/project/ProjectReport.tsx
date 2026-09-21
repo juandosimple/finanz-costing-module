@@ -208,13 +208,21 @@ export function ProjectReport({
                             <>
                               {plan.name}
                               <span className="block text-xs font-normal text-muted">
-                                {fmtNum(plan.projects)} projects
+                                {fmtNum(plan.projects)} projects · {fmtNum(plan.users)}{" "}
+                                {plan.users === 1 ? "user" : "users"}
                               </span>
                             </>
                           )}
                         </td>
                         <td className="py-2 pr-4 text-left text-ink-2 capitalize">{kind}</td>
-                        <td className="py-2 pr-4 font-medium text-income">{money(perMonth(row.subscription.price))}</td>
+                        <td className="py-2 pr-4 font-medium text-income">
+                          {money(perMonth(row.subscription.price))}
+                          {plan.users !== 1 && (
+                            <span className="block text-xs font-normal">
+                              {money(perMonth(row.all_users.price))} for {fmtNum(plan.users)} users
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2 pr-4 text-income">
                           {money(row.onboarding.price)}
                           <span className="block text-xs text-bad">costs {money(row.onboarding.cost)}</span>
@@ -239,7 +247,8 @@ export function ProjectReport({
               </tbody>
             </table>
             <p className="mt-3 text-xs text-muted">
-              Figures are for one account over its first year. Storage keeps every month's evidence, so each month
+              Figures are for one account over its first year; a plan sold to several users is that many times the
+              subscription. Storage keeps every month's evidence, so each month
               costs a little more than the one before.
             </p>
 
@@ -247,7 +256,8 @@ export function ProjectReport({
             <ul className="space-y-1 text-sm text-ink-2">
               {result.plans.map((plan) => (
                 <li key={plan.plan_id}>
-                  <span className="font-medium text-ink">{plan.name}</span> · {fmtNum(plan.projects)} active projects / work records —{" "}
+                  <span className="font-medium text-ink">{plan.name}</span> · {fmtNum(plan.projects)} active projects / work records ·{" "}
+                  {fmtNum(plan.users)} {plan.users === 1 ? "user" : "users"} —{" "}
                   {plan.onboarding_ids.length === 0
                     ? "subscription only, no onboarding"
                     : plan.onboarding_ids.map((id) => nameById.get(id) ?? id).join(", ")}

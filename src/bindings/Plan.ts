@@ -10,6 +10,11 @@ export type Plan = { id: string, name: string,
  */
 projects: number, 
 /**
+ * Users the plan is sold to. Every user gets the whole plan, so the
+ * subscription is simply multiplied by them.
+ */
+users: number, 
+/**
  * Storage a contractor account on this plan carries, in GB, after a year.
  */
 contractor_storage_gb: number, 

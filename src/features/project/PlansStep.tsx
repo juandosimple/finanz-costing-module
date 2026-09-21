@@ -62,6 +62,7 @@ export function StepPlans({
             id: crypto.randomUUID(),
             name: `Plan ${p.plans.length + 1}`,
             projects: last?.projects ?? 20,
+            users: last?.users ?? 1,
             contractor_storage_gb: last?.contractor_storage_gb ?? 250,
             consultant_storage_gb: last?.consultant_storage_gb ?? 250,
             contractor_price: null,
@@ -181,6 +182,9 @@ function PlanCard({
         <Field label="Active projects / Work records" className="flex-[0_1_190px]">
           <NumberField value={plan.projects} min={0} integer onChange={(v) => onChange({ projects: v })} />
         </Field>
+        <Field label="Users" className="flex-[0_1_120px]">
+          <NumberField value={plan.users} min={0} integer onChange={(v) => onChange({ users: v })} />
+        </Field>
         <Field label="Storage" className="flex-[0_1_170px]">
           <NumberField value={storage} min={0} suffix="GB" onChange={(v) => onChange({ [storageField]: v })} />
         </Field>
@@ -259,6 +263,15 @@ function PlanCard({
           <span className={clsx("font-semibold", losing ? "text-bad" : "text-income")}>
             margin {fmtPct(row?.subscription.margin)}
           </span>
+          {plan.users !== 1 && row && (
+            <>
+              <span className="size-[3px] rounded-full bg-axis" />
+              <span>{fmtNum(plan.users)} users</span>
+              <span className="font-semibold text-bad">{money(perMonth(row.all_users.cost))}</span>
+              <span>→</span>
+              <span className="font-semibold text-income">{money(perMonth(row.all_users.price))} / month</span>
+            </>
+          )}
           {mode !== "project" && (
             <button type="button" className="text-accent hover:underline" onClick={() => onChange({ [field]: null })}>
               · Use the project margin ({money(perMonth(suggested))} / month)
@@ -306,7 +319,8 @@ function PlanTable({ plans, account, money }: { plans: PlanResult[]; account: Ac
               <div className="flex flex-wrap items-center gap-3.5 px-4 py-3">
                 <span className="text-[15px] font-bold tracking-tight text-ink">{plan.name}</span>
                 <span className="text-[13px] text-ink-2">
-                  {fmtNum(plan.projects)} projects / work records · {fmtNum(row.stored_gb_end_of_year)} GB storage
+                  {fmtNum(plan.projects)} projects / work records · {fmtNum(row.stored_gb_end_of_year)} GB storage ·{" "}
+                  {fmtNum(plan.users)} {plan.users === 1 ? "user" : "users"}
                 </span>
                 <span className="flex items-center gap-2 text-[13px] font-medium text-ink">
                   <span className={clsx("size-2 rounded-full", shown.dot)} />
@@ -355,6 +369,23 @@ function PlanTable({ plans, account, money }: { plans: PlanResult[]; account: Ac
                   </tr>
                 </tbody>
                 <tfoot>
+                  {plan.users !== 1 && (
+                    <tr className="border-t border-line bg-surface-2/40 text-right">
+                      <td className={clsx(cell, "text-left text-ink-2")} colSpan={3}>
+                        {fmtNum(plan.users)} users together
+                      </td>
+                      <td className={clsx(cell, "text-bad", group)}>{money(row.all_users.cost)}</td>
+                      <td className={clsx(cell, "text-income")}>{money(row.all_users.price)}</td>
+                      <td className={clsx(cell, "text-ink-2")}>{fmtPct(row.all_users.margin)}</td>
+                      <td className={clsx(cell, "text-income")}>{money(perMonth(row.all_users.price))}</td>
+                      <td
+                        className={clsx(cell, "font-bold", row.all_users.profit < 0 ? "text-bad" : "text-good")}
+                      >
+                        {row.all_users.profit >= 0 && "+"}
+                        {money(row.all_users.profit)}
+                      </td>
+                    </tr>
+                  )}
                   <tr className="border-t border-line bg-surface-2/40">
                     <td className={clsx(cell, "text-left text-ink-2")} colSpan={7}>
                       Profit year 1, onboarding and subscription together
