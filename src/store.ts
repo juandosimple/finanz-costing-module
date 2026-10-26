@@ -40,6 +40,9 @@ interface AppState {
   createProject(name: string, client: string, template: ProjectTemplate): Promise<void>;
   duplicateProject(id: string): Promise<void>;
   deleteProject(id: string): Promise<void>;
+  /** Writes the project to Downloads; returns where it landed. */
+  exportProject(id: string): Promise<string | undefined>;
+  importProject(file: File): Promise<void>;
   /** Applies the change immediately; saves and recalculates with a debounce. */
   updateProject(update: (project: Project) => Project): void;
   /** Step 1: swaps the template, rebuilding the catalogue in the engine. */
@@ -198,6 +201,24 @@ export const useApp = create<AppState>((set, get) => {
       await flushSave();
       try {
         await api.duplicateProject(id);
+        await reloadProjects();
+      } catch (e) {
+        set({ error: errorMessage(e) });
+      }
+    },
+
+    async exportProject(id) {
+      await flushSave();
+      try {
+        return await api.exportProject(id);
+      } catch (e) {
+        set({ error: errorMessage(e) });
+      }
+    },
+
+    async importProject(file) {
+      try {
+        await api.importProject(await file.text());
         await reloadProjects();
       } catch (e) {
         set({ error: errorMessage(e) });

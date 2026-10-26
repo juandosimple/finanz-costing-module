@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, Download, Plus, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import type { ProjectTemplate } from "../../bindings/ProjectTemplate";
 import { Button, Card, Field, Page, TextInput } from "../../components/ui";
@@ -9,12 +9,14 @@ import { useApp } from "../../store";
 
 export function ProjectsPage() {
   const projects = useApp((s) => s.projects);
-  const { createProject, openProject, duplicateProject, deleteProject } = useApp.getState();
+  const { createProject, openProject, duplicateProject, deleteProject, exportProject, importProject } =
+    useApp.getState();
 
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
   const [template, setTemplate] = useState<ProjectTemplate>("building_owners");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [exported, setExported] = useState<{ id: string; path: string } | null>(null);
 
   return (
     <Page title="Projects" subtitle="Pick a template, enter the costs and the app works out the price per building.">
@@ -84,6 +86,19 @@ export function ProjectsPage() {
         <span className="text-[13px] text-muted">
           {projects.length} {projects.length === 1 ? "project" : "projects"}
         </span>
+        <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-2 hover:text-ink [&>svg]:size-4">
+          <Upload /> Import project
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void importProject(file);
+            }}
+          />
+        </label>
       </div>
 
       {projects.length === 0 ? (
@@ -142,6 +157,21 @@ export function ProjectsPage() {
                     </>
                   ) : (
                     <>
+                      {exported?.id === p.id && (
+                        <span className="mr-auto truncate text-xs text-ink-2" title={exported.path}>
+                          Saved to {exported.path.split(/[\\/]/).slice(-2).join("/")}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          const path = await exportProject(p.id);
+                          if (path) setExported({ id: p.id, path });
+                        }}
+                      >
+                        <Download /> Export
+                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => void duplicateProject(p.id)}>
                         <Copy /> Duplicate
                       </Button>

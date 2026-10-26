@@ -671,13 +671,16 @@ function StepPricing({
     }));
 
   const extras = offered(project.onboarding);
+  // Same cards, in the same order, as step 2.
+  const categories: string[] = [];
+  for (const item of extras) if (!categories.includes(item.category)) categories.push(item.category);
   // On bands the markup only goes on the catalogue's recurring services.
   const markupApplies = project.template === "contractors" || extras.some((item) => item.recurrence === "annual");
 
   return (
     <div className="space-y-4">
       <Card
-        title="Subscription"
+        title="Platform and services"
         description={
           project.template === "contractors"
             ? "The monthly price per account covers its plan's share of the server and the database and its storage and downloads with this markup on top, plus its share of the shared services at cost. You can still set the price of any plan in step 4."
@@ -709,27 +712,36 @@ function StepPricing({
         )}
       </Card>
 
-      <Card
-        title="What to charge for each cost"
-        description="Billed once, apart from the subscription. Put a markup on the cost or type a fixed price — the Spine unit costs 2,000 and sells at 5,000."
-      >
-        {extras.length === 0 ? (
+      {extras.length === 0 ? (
+        <Card title="Onboarding">
           <p className="text-sm text-muted">No extra costs added.</p>
-        ) : (
-          <div className="space-y-2">
-            {extras.map((item) => (
-              <PriceRow
-                key={item.id}
-                item={item}
-                line={lineById.get(item.id)}
-                currency={project.currency}
-                money={money}
-                onChange={(price) => setPrice(item.id, price)}
-              />
-            ))}
-          </div>
-        )}
-      </Card>
+        </Card>
+      ) : (
+        <>
+          <p className="text-sm text-ink-2">
+            What to charge for each onboarding cost, billed apart from the subscription. Put a markup on the cost or
+            type a fixed price — the Spine unit costs 2,000 and sells at 5,000.
+          </p>
+          {categories.map((category) => (
+            <Card key={category} title={category}>
+              <div className="space-y-2">
+                {extras
+                  .filter((item) => item.category === category)
+                  .map((item) => (
+                    <PriceRow
+                      key={item.id}
+                      item={item}
+                      line={lineById.get(item.id)}
+                      currency={project.currency}
+                      money={money}
+                      onChange={(price) => setPrice(item.id, price)}
+                    />
+                  ))}
+              </div>
+            </Card>
+          ))}
+        </>
+      )}
     </div>
   );
 }

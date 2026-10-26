@@ -70,6 +70,35 @@ fn duplicate_project(db: State<'_, Db>, id: String) -> Result<Project, String> {
     Ok(project)
 }
 
+/// Writes the project to the Downloads folder as a file another copy of the app can import.
+#[tauri::command]
+fn export_project(app: tauri::AppHandle, db: State<'_, Db>, id: String) -> Result<String, String> {
+    let project = db.get_project(&id)?;
+    let name: String = project
+        .name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' })
+        .collect();
+    let path = app
+        .path()
+        .download_dir()
+        .map_err(db::err)?
+        .join(format!("{}.finanz.json", name.trim()));
+    let data = serde_json::to_string_pretty(&project).map_err(db::err)?;
+    std::fs::write(&path, data).map_err(db::err)?;
+    Ok(path.display().to_string())
+}
+
+/// Adds an exported project as a new one, so importing twice never overwrites anything.
+#[tauri::command]
+fn import_project(db: State<'_, Db>, data: String) -> Result<Project, String> {
+    let mut project = db::parse_project(&data).map_err(|e| format!("Not a project file: {e}"))?;
+    project.id = new_id();
+    project.updated_at = now();
+    db.upsert_project(&project)?;
+    Ok(project)
+}
+
 #[tauri::command]
 fn delete_project(db: State<'_, Db>, id: String) -> Result<(), String> {
     db.delete_project(&id)
@@ -194,6 +223,8 @@ pub fn run() {
             save_project,
             duplicate_project,
             delete_project,
+            export_project,
+            import_project,
             plan,
             switch_template,
             has_api_key,

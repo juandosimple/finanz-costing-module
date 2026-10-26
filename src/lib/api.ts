@@ -19,6 +19,8 @@ export const api = {
     invoke<Project>("switch_template", { project, template }),
   duplicateProject: (id: string) => invoke<Project>("duplicate_project", { id }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
+  exportProject: (id: string) => invoke<string>("export_project", { id }),
+  importProject: (data: string) => invoke<Project>("import_project", { data }),
   plan: (project: Project) => invoke<ProjectResult>("plan", { project }),
   hasApiKey: () => invoke<boolean>("has_api_key"),
   listLocalModels: () => invoke<string[]>("list_local_models"),

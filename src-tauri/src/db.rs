@@ -126,6 +126,17 @@ fn migrate_to_markup(value: &mut serde_json::Value) {
     }
 }
 
+/// Reads a stored or exported project, bringing an older shape up to date.
+pub fn parse_project(data: &str) -> Result<Project, String> {
+    let mut value: serde_json::Value = serde_json::from_str(data).map_err(err)?;
+    migrate_band_selection(&mut value);
+    migrate_structure(&mut value);
+    migrate_to_markup(&mut value);
+    let mut project: Project = serde_json::from_value(value).map_err(err)?;
+    apply_catalogue_rules(&mut project);
+    Ok(project)
+}
+
 pub fn err(e: impl Display) -> String {
     e.to_string()
 }
@@ -183,15 +194,7 @@ impl Db {
             )
             .optional()
             .map_err(err)?;
-        let data = data.ok_or_else(|| "Project not found".to_string())?;
-
-        let mut value: serde_json::Value = serde_json::from_str(&data).map_err(err)?;
-        migrate_band_selection(&mut value);
-        migrate_structure(&mut value);
-        migrate_to_markup(&mut value);
-        let mut project: Project = serde_json::from_value(value).map_err(err)?;
-        apply_catalogue_rules(&mut project);
-        Ok(project)
+        parse_project(&data.ok_or_else(|| "Project not found".to_string())?)
     }
 
     pub fn upsert_project(&self, project: &Project) -> Result<(), String> {

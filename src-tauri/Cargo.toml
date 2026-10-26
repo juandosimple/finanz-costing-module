@@ -1,6 +1,6 @@
 [package]
 name = "ai-analyzer"
-version = "0.2.1"
+version = "0.3.0"
 description = "Cost and pricing analyzer for SaaS systems"
 authors = ["juando"]
 edition = "2021"

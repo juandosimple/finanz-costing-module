@@ -26,6 +26,10 @@ pnpm tauri build                # build the installer
 
 The **Report** button in the project header opens the whole project as one document: what it costs us, what is charged for each cost, every scenario with its totals and its quote per building per month, and what the model suggested, with the market it was told about. Printing it (*Print / Save as PDF*) is how a quote leaves the app — the app's own screen never prints, the page goes white whatever theme is on screen, and no table row is cut in half by a page break.
 
+## Sharing a project
+
+**Export** on a project card writes the whole project to the Downloads folder as `<name>.finanz.json`. **Import project** on the projects page reads that file into another copy of the app as a new project — it never overwrites one — and a file exported by an older version is brought up to date the same way a saved project is.
+
 ## Templates
 
 - **Modle - Building owners** — structure costs plus the whole onboarding catalogue.
