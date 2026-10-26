@@ -3,4 +3,4 @@
 /**
  * One money stream of a band: what it costs, what it bills and what it leaves.
  */
-export type StreamResult = { cost: number, cost_per_building: number | null, price: number, price_per_building: number | null, fees: number, profit: number, margin: number | null, };
+export type StreamResult = { cost: number, cost_per_building: number | null, price: number, price_per_building: number | null, profit: number, margin: number | null, };

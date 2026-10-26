@@ -18,7 +18,12 @@ const DEFAULT_ONBOARDING = [
 ];
 
 export function defaultSelection(catalogue: OnboardingItem[]): string[] {
-  return DEFAULT_ONBOARDING.filter((id) => catalogue.some((item) => item.id === id));
+  return DEFAULT_ONBOARDING.filter((id) => offered(catalogue).some((item) => item.id === id));
+}
+
+/** The catalogue without the elements deleted in step 2. */
+export function offered(catalogue: OnboardingItem[]): OnboardingItem[] {
+  return catalogue.filter((item) => !item.removed);
 }
 
 /** Ticking an element drops the alternatives it rules out, so the list stays honest. */
@@ -137,7 +142,7 @@ export function OnboardingPicker({
                 {note && <span className="text-xs"> — {note}</span>}
               </span>
               {price && (
-                <span className={clsx("shrink-0 text-xs font-semibold", checked ? "text-bad" : "text-muted")}>
+                <span className={clsx("shrink-0 text-xs font-semibold", checked ? "text-income" : "text-muted")}>
                   {price(item.id)}
                 </span>
               )}

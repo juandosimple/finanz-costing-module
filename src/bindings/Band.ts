@@ -6,7 +6,8 @@ import type { PriceRule } from "./PriceRule";
  */
 export type Band = { id: string, buildings: number, 
 /**
- * How this band's subscription is charged. `None` follows the project margin.
+ * How this band's subscription is charged. `None` follows the project markup;
+ * a `Markup` of its own goes on the band's whole subscription cost.
  */
 price: PriceRule | null, 
 /**

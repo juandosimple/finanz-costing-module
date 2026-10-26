@@ -23,6 +23,6 @@ all_users: StreamResult,
  */
 onboarding: StreamResult, 
 /**
- * Yearly price that would hit the project margin.
+ * Yearly price the project markup gives.
  */
 suggested_price: number | null, price_is_manual: boolean, };

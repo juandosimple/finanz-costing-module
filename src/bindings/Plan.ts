@@ -23,7 +23,7 @@ contractor_storage_gb: number,
  */
 consultant_storage_gb: number, 
 /**
- * How a contractor is charged. `None` follows the project margin; an
+ * How a contractor is charged. `None` follows the project markup; an
  * amount is the yearly price of one account.
  */
 contractor_price: PriceRule | null, 

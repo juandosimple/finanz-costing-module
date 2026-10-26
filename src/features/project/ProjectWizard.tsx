@@ -8,6 +8,8 @@ import {
   LoaderCircle,
   Plus,
   Sparkles,
+  RotateCcw,
+  Save,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
@@ -15,9 +17,11 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { Band } from "../../bindings/Band";
 import type { BandResult } from "../../bindings/BandResult";
 import type { OnboardingItem } from "../../bindings/OnboardingItem";
+import type { SharedCost } from "../../bindings/SharedCost";
 import type { OnboardingLine } from "../../bindings/OnboardingLine";
 import type { PriceRule } from "../../bindings/PriceRule";
 import type { Project } from "../../bindings/Project";
+import type { ProjectTemplate } from "../../bindings/ProjectTemplate";
 import type { ProjectResult } from "../../bindings/ProjectResult";
 import { Button, Callout, Card, Field, NumberField, Select, StatTile, TextArea, TextInput } from "../../components/ui";
 import { fmtDate, fmtMoney, fmtNum, fmtPct, perMonth } from "../../lib/format";
@@ -26,7 +30,7 @@ import { useApp, type SaveState, type Step } from "../../store";
 import { BandChart } from "./BandChart";
 import { StepPlans } from "./PlansStep";
 import { ProjectReport } from "./ProjectReport";
-import { defaultSelection, OnboardingPicker, Profit, toggleSelection, type Money } from "./shared";
+import { defaultSelection, offered, OnboardingPicker, Profit, toggleSelection, type Money } from "./shared";
 
 const STEPS: { value: Step; label: string }[] = [
   { value: 1, label: "Project" },
@@ -214,6 +218,27 @@ function StepCosts({ project }: { project: Project }) {
       onboarding: p.onboarding.map((i) => (i.id === id ? { ...i, ...patch } : i)),
     }));
 
+  // A deleted element stays in the catalogue so it can be restored, but leaves every
+  // selection: restoring it doesn't tick it back anywhere.
+  const removeItems = (ids: string[]) =>
+    updateProject((p) => ({
+      ...p,
+      onboarding: p.onboarding.map((i) => (ids.includes(i.id) ? { ...i, removed: true } : i)),
+      bands: p.bands.map((b) => ({
+        ...b,
+        onboarding: b.onboarding.filter((x) => !ids.includes(x)),
+      })),
+      plans: p.plans.map((pl) => ({
+        ...pl,
+        onboarding: pl.onboarding.filter((x) => !ids.includes(x)),
+      })),
+    }));
+  const restoreItems = (ids: string[]) =>
+    updateProject((p) => ({
+      ...p,
+      onboarding: p.onboarding.map((i) => (ids.includes(i.id) ? { ...i, removed: false } : i)),
+    }));
+
   const categories: string[] = [];
   for (const item of project.onboarding) if (!categories.includes(item.category)) categories.push(item.category);
 
@@ -221,21 +246,23 @@ function StepCosts({ project }: { project: Project }) {
   const setUsage = (patch: Partial<Project["usage"]>) =>
     updateProject((p) => ({ ...p, usage: { ...p.usage, ...patch } }));
 
-  const feeField = (
-    <Field label="Payment fee" hint="Taken out of every charge">
-      <NumberField
-        value={structure.fee_percent}
-        min={0}
-        scale={100}
-        suffix="%"
-        onChange={(v) => setStructure({ fee_percent: Math.min(v, 1) })}
-      />
-    </Field>
-  );
+  const setAllShared = (removed: boolean) => setStructure({ shared: structure.shared.map((c) => ({ ...c, removed })) });
+  const setShared = (id: string, patch: Partial<SharedCost>) =>
+    setStructure({
+      shared: structure.shared.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    });
 
   return (
     <div className="space-y-4">
-      {project.template === "contractors" ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <CostTemplates
+          template={project.template}
+          shared={structure.shared}
+          onImport={(shared) => setStructure({ shared })}
+        />
+      </div>
+
+      {project.template === "contractors" && (
         <Card
           title="Usage costs"
           description="What one account costs: its share of the platform, and the storage its plan carries. Storage fills over the year, so it costs more every month. How much each plan holds is set in step 4."
@@ -295,61 +322,254 @@ function StepCosts({ project }: { project: Project }) {
                 onChange={(v) => setUsage({ download_share: v })}
               />
             </Field>
-            {feeField}
-          </div>
-        </Card>
-      ) : (
-        <Card
-          title="Structure costs"
-          description="What running the platform costs you. Fixed costs are shared by the buildings of each scenario."
-        >
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <Field label="Fixed costs / month" hint="Hosting, team, tools">
-              <NumberField
-                value={structure.fixed_monthly}
-                min={0}
-                dot="cost"
-                suffix={project.currency}
-                onChange={(v) => setStructure({ fixed_monthly: v })}
-              />
-            </Field>
-            <Field label="Cost per building / month" hint="Connectivity, storage, AI, licences">
-              <NumberField
-                value={structure.per_building_monthly}
-                min={0}
-                dot="cost"
-                suffix={project.currency}
-                onChange={(v) => setStructure({ per_building_monthly: v })}
-              />
-            </Field>
-            {feeField}
           </div>
         </Card>
       )}
+
+      <Card
+        title="Platform and services"
+        actions={
+          structure.shared.length > 0 &&
+          (structure.shared.every((c) => c.removed) ? (
+            <Button variant="primary" onClick={() => setAllShared(false)}>
+              <RotateCcw /> Restore all
+            </Button>
+          ) : (
+            <Button variant="danger" onClick={() => setAllShared(true)}>
+              <Trash2 /> Delete all
+            </Button>
+          ))
+        }
+        description={`What running the platform costs you, per month. Charged at cost, with no margin, for the share this client pays — so one client can cover most of a service and another none of it. ${
+          project.template === "contractors"
+            ? "Each plan splits it between its users."
+            : "Shared by the buildings of each scenario."
+        }`}
+      >
+        <div className="space-y-3">
+          {structure.shared.map((cost) => (
+            <SharedCostRow
+              key={cost.id}
+              cost={cost}
+              currency={project.currency}
+              onChange={(patch) => setShared(cost.id, patch)}
+              onRemove={() => setShared(cost.id, { removed: true })}
+              onRestore={() => setShared(cost.id, { removed: false })}
+            />
+          ))}
+          <Button
+            size="sm"
+            onClick={() =>
+              setStructure({
+                shared: [
+                  ...structure.shared,
+                  {
+                    id: crypto.randomUUID(),
+                    name: "",
+                    monthly: 0,
+                    share: 1,
+                    removed: false,
+                  },
+                ],
+              })
+            }
+          >
+            <Plus /> Add service
+          </Button>
+        </div>
+      </Card>
 
       {project.onboarding.length > 0 && (
         <>
           <p className="text-sm text-ink-2">
             Onboarding costs. Every element has a cost here — each scenario in step 4 picks the ones it needs.
           </p>
-          {categories.map((category) => (
-            <Card key={category} title={category}>
-              <div className="space-y-3">
-                {project.onboarding
-                  .filter((i) => i.category === category)
-                  .map((item) => (
+          {categories.map((category) => {
+            const items = project.onboarding.filter((i) => i.category === category);
+            const ids = items.map((i) => i.id);
+            return (
+              <Card
+                key={category}
+                title={category}
+                actions={
+                  items.every((i) => i.removed) ? (
+                    <Button variant="primary" onClick={() => restoreItems(ids)}>
+                      <RotateCcw /> Restore all
+                    </Button>
+                  ) : (
+                    <Button variant="danger" onClick={() => removeItems(ids)}>
+                      <Trash2 /> Delete all
+                    </Button>
+                  )
+                }
+              >
+                <div className="space-y-3">
+                  {items.map((item) => (
                     <CostRow
                       key={item.id}
                       item={item}
                       currency={project.currency}
                       onChange={(patch) => setItem(item.id, patch)}
+                      onRemove={() => removeItems([item.id])}
+                      onRestore={() => restoreItems([item.id])}
                     />
                   ))}
-              </div>
-            </Card>
-          ))}
+                </div>
+              </Card>
+            );
+          })}
         </>
       )}
+    </div>
+  );
+}
+
+/** Saves this project's platform costs under a name, or replaces them with a saved list. */
+function CostTemplates({
+  template,
+  shared,
+  onImport,
+}: {
+  template: ProjectTemplate;
+  shared: SharedCost[];
+  onImport: (shared: SharedCost[]) => void;
+}) {
+  // Selecting the list itself: a fresh `[]` on every read would re-render forever.
+  const all = useApp((s) => s.settings?.cost_templates) ?? [];
+  // Only the lists saved from this kind of project.
+  const templates = all.filter((t) => t.template === template);
+  const updateSettings = useApp((s) => s.updateSettings);
+  const [name, setName] = useState<string | null>(null);
+
+  const save = () => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    // Saving under a name already taken replaces that template.
+    updateSettings({
+      cost_templates: [
+        ...all.filter((t) => t.name !== trimmed || t.template !== template),
+        { name: trimmed, template, shared },
+      ],
+    });
+    setName(null);
+  };
+
+  if (name !== null) {
+    return (
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <TextInput
+          autoFocus
+          aria-label="Template name"
+          placeholder="Template name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-48"
+        />
+        <Button type="submit" variant="primary" disabled={!name.trim()}>
+          Save
+        </Button>
+        <Button variant="ghost" onClick={() => setName(null)}>
+          Cancel
+        </Button>
+      </form>
+    );
+  }
+
+  // Saving comes first, so it stays put whether or not there is anything to import.
+  return (
+    <>
+      <Button onClick={() => setName("")}>
+        <Save /> Save costs template
+      </Button>
+      {templates.length > 0 && (
+        <Select
+          value=""
+          label="Import a costs template"
+          className="w-52"
+          options={[
+            { value: "", label: "Import template…" },
+            ...templates.map((t) => ({ value: t.name, label: t.name })),
+          ]}
+          onChange={(picked) => {
+            const template = templates.find((t) => t.name === picked);
+            if (template) onImport(template.shared);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The share and what it comes to are two views of one number: typing either sets the other. */
+function SharedCostRow({
+  cost,
+  currency,
+  onChange,
+  onRemove,
+  onRestore,
+}: {
+  cost: SharedCost;
+  currency: string;
+  onChange: (patch: Partial<SharedCost>) => void;
+  onRemove: () => void;
+  onRestore: () => void;
+}) {
+  return (
+    <div
+      className={clsx(
+        "grid grid-cols-2 items-end gap-3 rounded-lg border border-line p-3 md:grid-cols-[4fr_2fr_2fr_2fr_7rem]",
+        cost.removed && "bg-surface-2",
+      )}
+    >
+      {/* Same as a deleted onboarding element: faded, locked, restorable. */}
+      <div className={clsx("contents", cost.removed && "[&>*]:opacity-20")} inert={cost.removed}>
+        <Field label="Service" className="col-span-2 md:col-span-1">
+          <TextInput value={cost.name} onChange={(e) => onChange({ name: e.target.value })} />
+        </Field>
+        <Field label="Cost / month">
+          <NumberField
+            value={cost.monthly}
+            min={0}
+            dot="cost"
+            suffix={currency}
+            onChange={(v) => onChange({ monthly: v })}
+          />
+        </Field>
+        <Field label="Client pays">
+          <NumberField
+            value={cost.share}
+            min={0}
+            scale={100}
+            suffix="%"
+            onChange={(v) => onChange({ share: Math.min(v, 1) })}
+          />
+        </Field>
+        <Field label="Client pays / month">
+          <NumberField
+            value={cost.monthly * cost.share}
+            min={0}
+            suffix={currency}
+            onChange={(v) => cost.monthly > 0 && onChange({ share: Math.min(v / cost.monthly, 1) })}
+          />
+        </Field>
+      </div>
+      <div className="col-span-2 text-right md:col-span-1">
+        {cost.removed ? (
+          <Button variant="primary" onClick={onRestore}>
+            <RotateCcw /> Restore
+          </Button>
+        ) : (
+          <Button variant="danger" aria-label={`Delete ${cost.name}`} onClick={onRemove}>
+            <Trash2 />
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -358,50 +578,76 @@ function CostRow({
   item,
   currency,
   onChange,
+  onRemove,
+  onRestore,
 }: {
   item: OnboardingItem;
   currency: string;
   onChange: (patch: Partial<OnboardingItem>) => void;
+  onRemove: () => void;
+  onRestore: () => void;
 }) {
   return (
-    <div className="grid grid-cols-2 items-end gap-3 rounded-lg border border-line p-3 md:grid-cols-12">
-      <Field label="Element" className="col-span-2 md:col-span-4">
-        <TextInput value={item.name} onChange={(e) => onChange({ name: e.target.value })} />
-      </Field>
-      <Field label="Basis" className="md:col-span-2">
-        <Select
-          value={item.basis}
-          label="Basis"
-          options={BASES.map((b) => ({ value: b, label: BASIS_LABELS[b] }))}
-          onChange={(basis) => onChange({ basis })}
-        />
-      </Field>
-      <Field label="Billing" className="md:col-span-2">
-        <Select
-          value={item.recurrence}
-          label="Billing"
-          options={RECURRENCES.map((r) => ({ value: r, label: RECURRENCE_LABELS[r] }))}
-          onChange={(recurrence) => onChange({ recurrence })}
-        />
-      </Field>
-      <Field label="Qty" className="md:col-span-2">
-        {item.basis === "per_building" ? (
-          <div className="flex h-9 items-center justify-center rounded-md border border-line bg-surface-2 px-2 text-xs text-ink-2">
-            per building
-          </div>
+    <div
+      className={clsx(
+        "grid grid-cols-2 items-end gap-3 rounded-lg border border-line p-3 md:grid-cols-[4fr_2fr_2fr_2fr_2fr_7rem]",
+        item.removed && "bg-surface-2",
+      )}
+    >
+      {/* `contents` keeps the fields in the row's grid; `inert` locks them while deleted. */}
+      <div className={clsx("contents", item.removed && "[&>*]:opacity-20")} inert={item.removed}>
+        <Field label="Element" className="col-span-2 md:col-span-1">
+          <TextInput value={item.name} onChange={(e) => onChange({ name: e.target.value })} />
+        </Field>
+        <Field label="Basis">
+          <Select
+            value={item.basis}
+            label="Basis"
+            options={BASES.map((b) => ({ value: b, label: BASIS_LABELS[b] }))}
+            onChange={(basis) => onChange({ basis })}
+          />
+        </Field>
+        <Field label="Billing">
+          <Select
+            value={item.recurrence}
+            label="Billing"
+            options={RECURRENCES.map((r) => ({
+              value: r,
+              label: RECURRENCE_LABELS[r],
+            }))}
+            onChange={(recurrence) => onChange({ recurrence })}
+          />
+        </Field>
+        <Field label="Qty">
+          {item.basis === "per_building" ? (
+            <div className="flex h-9 items-center justify-center rounded-md border border-line bg-surface-2 px-2 text-xs text-ink-2">
+              per building
+            </div>
+          ) : (
+            <NumberField value={item.quantity} min={0} onChange={(v) => onChange({ quantity: v })} />
+          )}
+        </Field>
+        <Field label="Internal cost">
+          <NumberField
+            value={item.internal_unit_cost}
+            min={0}
+            dot="cost"
+            suffix={currency}
+            onChange={(v) => onChange({ internal_unit_cost: v })}
+          />
+        </Field>
+      </div>
+      <div className="col-span-2 text-right md:col-span-1">
+        {item.removed ? (
+          <Button variant="primary" onClick={onRestore}>
+            <RotateCcw /> Restore
+          </Button>
         ) : (
-          <NumberField value={item.quantity} min={0} onChange={(v) => onChange({ quantity: v })} />
+          <Button variant="danger" aria-label={`Delete ${item.name}`} onClick={onRemove}>
+            <Trash2 />
+          </Button>
         )}
-      </Field>
-      <Field label="Internal cost" className="md:col-span-2">
-        <NumberField
-          value={item.internal_unit_cost}
-          min={0}
-          dot="cost"
-          suffix={currency}
-          onChange={(v) => onChange({ internal_unit_cost: v })}
-        />
-      </Field>
+      </div>
     </div>
   );
 }
@@ -424,37 +670,54 @@ function StepPricing({
       onboarding: p.onboarding.map((i) => (i.id === id ? { ...i, price } : i)),
     }));
 
+  const extras = offered(project.onboarding);
+  // On bands the markup only goes on the catalogue's recurring services.
+  const markupApplies = project.template === "contractors" || extras.some((item) => item.recurrence === "annual");
+
   return (
     <div className="space-y-4">
       <Card
         title="Subscription"
         description={
           project.template === "contractors"
-            ? "The monthly price per account covers its plan's share of the server and the database, its storage and downloads, the payment fee and this margin. You can still set the price of any plan in step 4."
-            : "The monthly price per building covers the structure costs, the payment fee and this margin. You can still set the price of any band in step 4."
+            ? "The monthly price per account covers its plan's share of the server and the database and its storage and downloads with this markup on top, plus its share of the shared services at cost. You can still set the price of any plan in step 4."
+            : "The monthly price per building covers the platform and its services at cost, and the recurring services (step 2) with this markup on top. It never goes below what the subscription costs. You can still set the price of any band in step 4."
         }
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Subscription margin" hint={`Payment fee: ${fmtPct(project.structure.fee_percent)}`}>
-            <NumberField
-              value={project.subscription_margin}
-              min={0}
-              scale={100}
-              dot="income"
-              suffix="%"
-              onChange={(v) => updateProject((p) => ({ ...p, subscription_margin: Math.min(v, 0.95) }))}
-            />
-          </Field>
-        </div>
+        {markupApplies ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Field label="Subscription markup" hint="On top of cost: 40% on 100 bills 140">
+              <NumberField
+                value={project.subscription_markup}
+                min={0}
+                scale={100}
+                dot="income"
+                suffix="%"
+                onChange={(v) =>
+                  updateProject((p) => ({
+                    ...p,
+                    subscription_markup: v,
+                  }))
+                }
+              />
+            </Field>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            No extra costs added: the subscription is charged at what the platform costs.
+          </p>
+        )}
       </Card>
 
-      {project.onboarding.length > 0 && (
-        <Card
-          title="What to charge for each cost"
-          description="Billed once, apart from the subscription. Charge a margin over the cost or type a fixed price — the Spine unit costs 2,000 and sells at 5,000."
-        >
+      <Card
+        title="What to charge for each cost"
+        description="Billed once, apart from the subscription. Put a markup on the cost or type a fixed price — the Spine unit costs 2,000 and sells at 5,000."
+      >
+        {extras.length === 0 ? (
+          <p className="text-sm text-muted">No extra costs added.</p>
+        ) : (
           <div className="space-y-2">
-            {project.onboarding.map((item) => (
+            {extras.map((item) => (
               <PriceRow
                 key={item.id}
                 item={item}
@@ -465,9 +728,8 @@ function StepPricing({
               />
             ))}
           </div>
-        </Card>
-      )}
-
+        )}
+      </Card>
     </div>
   );
 }
@@ -501,22 +763,22 @@ function PriceRow({
       </div>
       <Field label="Charge as" className="col-span-6 md:col-span-3">
         <Select
-          value={isAmount ? "amount" : "margin"}
+          value={isAmount ? "amount" : "markup"}
           label="Charge as"
           options={[
-            { value: "margin", label: "Margin over cost" },
+            { value: "markup", label: "Markup on cost" },
             { value: "amount", label: "Fixed price" },
           ]}
           onChange={(next) =>
             onChange(
               next === "amount"
                 ? { type: "amount", value: line?.unit_price ?? item.internal_unit_cost }
-                : { type: "margin", percent: 0.375 },
+                : { type: "markup", percent: 0.6 },
             )
           }
         />
       </Field>
-      <Field label={isAmount ? "Price per unit" : "Margin"} className="col-span-6 md:col-span-2">
+      <Field label={isAmount ? "Price per unit" : "Markup"} className="col-span-6 md:col-span-2">
         {rule.type === "amount" ? (
           <NumberField
             value={rule.value}
@@ -532,7 +794,7 @@ function PriceRow({
             scale={100}
             dot="income"
             suffix="%"
-            onChange={(v) => onChange({ type: "margin", percent: Math.min(v, 0.95) })}
+            onChange={(v) => onChange({ type: "markup", percent: v })}
           />
         )}
       </Field>
@@ -679,8 +941,8 @@ function BandCard({
             value={mode}
             label="Charge as"
             options={[
-              { value: "project", label: "Project margin" },
-              { value: "margin", label: "Own margin" },
+              { value: "project", label: "Project markup" },
+              { value: "markup", label: "Own markup" },
               { value: "amount", label: "Fixed price" },
             ]}
             onChange={(next) =>
@@ -690,20 +952,23 @@ function BandCard({
                     ? null
                     : next === "amount"
                       ? { type: "amount", value: computed?.subscription.price_per_building ?? suggested }
-                      : { type: "margin", percent: project.subscription_margin },
+                      : { type: "markup", percent: project.subscription_markup },
               })
             }
           />
         </Field>
-        <Field label={mode === "margin" ? "Margin" : "Price / building / month"} className="col-span-6 md:col-span-2">
-          {rule !== null && rule.type === "margin" ? (
+        <Field
+          label={mode === "markup" ? "Markup on cost" : "Price / building / month"}
+          className="col-span-6 md:col-span-2"
+        >
+          {rule !== null && rule.type === "markup" ? (
             <NumberField
               value={rule.percent}
               min={0}
               scale={100}
               dot="income"
               suffix="%"
-              onChange={(v) => onChange({ price: { type: "margin", percent: Math.min(v, 0.95) } })}
+              onChange={(v) => onChange({ price: { type: "markup", percent: v } })}
             />
           ) : rule !== null && rule.type === "amount" ? (
             <NumberField
@@ -743,10 +1008,10 @@ function BandCard({
 
       <p className="mt-1 text-xs text-muted">
         {mode === "project" ? (
-          `Follows the project margin (${fmtPct(project.subscription_margin)})`
+          `Follows the project markup (${fmtPct(project.subscription_markup)})`
         ) : (
           <button type="button" className="text-accent hover:underline" onClick={() => onChange({ price: null })}>
-            Use the project margin ({money(suggested)})
+            Use the project markup ({money(suggested)})
           </button>
         )}
         {" · "}
@@ -758,7 +1023,7 @@ function BandCard({
       {project.onboarding.length > 0 && (
         <OnboardingPicker
           title="Onboarding this scenario needs"
-          catalogue={project.onboarding}
+          catalogue={offered(project.onboarding)}
           selection={band.onboarding}
           priced={computed?.onboarding_ids}
           blocked={computed?.blocked}
@@ -799,7 +1064,7 @@ function ScenarioTable({ bands, money }: { bands: BandResult[]; money: Money }) 
                   <th className={clsx(head, "text-center tracking-wider uppercase")} colSpan={3}>
                     Onboarding · billed once
                   </th>
-                  <th className={clsx(head, "text-center tracking-wider uppercase", group)} colSpan={3}>
+                  <th className={clsx(head, "text-center tracking-wider uppercase", group)} colSpan={5}>
                     Subscription · every year
                   </th>
                   <th className={clsx(head, group)} />
@@ -809,7 +1074,9 @@ function ScenarioTable({ bands, money }: { bands: BandResult[]; money: Money }) 
                   <th className={clsx(head, "text-right")}>Price</th>
                   <th className={clsx(head, "text-right")}>Margin</th>
                   <th className={clsx(head, "text-right", group)}>Cost</th>
+                  <th className={clsx(head, "text-right")}>Cost / month</th>
                   <th className={clsx(head, "text-right")}>Price</th>
+                  <th className={clsx(head, "text-right")}>Price / month</th>
                   <th className={clsx(head, "text-right")}>Margin</th>
                   <th className={clsx(head, "text-right", group)}>Profit per year</th>
                 </tr>
@@ -820,10 +1087,9 @@ function ScenarioTable({ bands, money }: { bands: BandResult[]; money: Money }) 
                   <td className={clsx(cell, "text-income")}>{money(band.onboarding.price)}</td>
                   <td className={clsx(cell, "text-ink-2")}>{fmtPct(band.onboarding.margin)}</td>
                   <td className={clsx(cell, "text-bad", group)}>{money(band.subscription.cost)}</td>
-                  <td className={clsx(cell, "text-income")}>
-                    {money(band.subscription.price)}
-                    {band.subscription_price_is_manual && <span className="ml-1 text-xs text-muted">typed</span>}
-                  </td>
+                  <td className={clsx(cell, "text-bad")}>{money(perMonth(band.subscription.cost))}</td>
+                  <td className={clsx(cell, "text-income")}>{money(band.subscription.price)}</td>
+                  <td className={clsx(cell, "text-income")}>{money(perMonth(band.subscription.price))}</td>
                   <td className={clsx(cell, "text-ink-2")}>{fmtPct(band.subscription.margin)}</td>
                   <td className={clsx(cell, group)}>
                     <Profit value={recurring(band)?.profit} money={money} strong />
@@ -832,7 +1098,7 @@ function ScenarioTable({ bands, money }: { bands: BandResult[]; money: Money }) 
               </tbody>
               <tfoot>
                 <tr className="border-t border-line bg-surface-2/40">
-                  <td className={clsx(cell, "text-left text-ink-2")} colSpan={6}>
+                  <td className={clsx(cell, "text-left text-ink-2")} colSpan={8}>
                     Profit year 1, onboarding and subscription together
                   </td>
                   <td className={clsx(cell, "text-right", group)}>
@@ -855,9 +1121,8 @@ function ScenarioTable({ bands, money }: { bands: BandResult[]; money: Money }) 
         <span className="size-[3px] rounded-full bg-axis" />
         <span>
           <span className="font-semibold text-ink">Profit</span> is in bold, green when we keep money and red when we
-          lose it, after the payment fee. Every figure is the total for that scenario's buildings, over a year: a price
-          typed per building is multiplied by them, and "Profit per year" is a year that repeats, without the
-          onboarding billed once.
+          lose it. Every figure is the total for that scenario's buildings, over a year: a price typed per building is
+          multiplied by them, and "Profit per year" is a year that repeats, without the onboarding billed once.
         </span>
       </p>
     </div>
@@ -1017,7 +1282,7 @@ function StepSuggestion({
             )}
             <p className="mt-4 text-xs text-muted">
               {suggestion.model} · {fmtDate(suggestion.created_at)}. A suggestion, not a decision: check it against
-              your own margins in step 4.
+              your own markups in step 4.
             </p>
           </Card>
 

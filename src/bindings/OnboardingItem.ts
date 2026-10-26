@@ -20,4 +20,9 @@ exclusive_group: string | null,
 /**
  * Ids this element already covers, so a band can't take both.
  */
-makes_unnecessary: Array<string>, };
+makes_unnecessary: Array<string>, 
+/**
+ * Deleted in step 2 but kept so it can be restored: it is neither priced nor
+ * offered to a band or a plan.
+ */
+removed: boolean, };

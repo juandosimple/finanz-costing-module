@@ -11,9 +11,9 @@ import type { UsageCosts } from "./UsageCosts";
 
 export type Project = { id: string, name: string, client: string, notes: string, template: ProjectTemplate, currency: Currency, 
 /**
- * Step 3: margin the suggested subscription price leaves.
+ * Step 3: markup on the recurring services the subscription bills.
  */
-subscription_margin: number, structure: StructureCosts, 
+subscription_markup: number, structure: StructureCosts, 
 /**
  * What one account's usage costs. Only plans use it.
  */

@@ -4,7 +4,7 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
-use pricing_engine::{apply_catalogue_rules, AppSettings, ExchangeRates, Project, ProjectSummary};
+use pricing_engine::{apply_catalogue_rules, default_shared_costs, AppSettings, ExchangeRates, Project, ProjectSummary, SERVER};
 use rusqlite::{params, Connection, OptionalExtension};
 
 const RATES_KEY: &str = "exchange_rates";
@@ -46,6 +46,83 @@ fn migrate_band_selection(value: &mut serde_json::Value) {
                 band["onboarding"] = serde_json::json!(inherited);
             }
         }
+    }
+}
+
+/// Projects saved before the server became one of the shared services carry it,
+/// and the costs once charged with a margin, as figures of their own. Both become
+/// rows of the list at their full cost, so the project's numbers survive.
+fn migrate_structure(value: &mut serde_json::Value) {
+    let Some(fields) = value["structure"].as_object_mut() else {
+        return;
+    };
+    let server = fields.remove("fixed_monthly");
+    let other = [fields.remove("monthly_with_margin"), fields.remove("per_building_monthly")]
+        .into_iter()
+        .flatten()
+        .find(|v| v.as_f64().is_some_and(|n| n > 0.0));
+    fields.remove("fee_percent");
+    if server.is_none() && other.is_none() {
+        return;
+    }
+
+    let shared = fields
+        .entry("shared")
+        .or_insert_with(|| serde_json::json!(default_shared_costs()));
+    let Some(rows) = shared.as_array_mut() else {
+        return;
+    };
+    if let Some(server) = server {
+        match rows.iter_mut().find(|row| row["id"] == SERVER) {
+            Some(row) => row["monthly"] = server,
+            None => rows.insert(
+                0,
+                serde_json::json!({"id": SERVER, "name": "Server", "monthly": server, "share": 1}),
+            ),
+        }
+    }
+    if let Some(other) = other {
+        rows.push(serde_json::json!({"id": "other-costs", "name": "Other costs", "monthly": other, "share": 1}));
+    }
+}
+
+/// Projects saved before prices became markups carry margins. Each one turns
+/// into the markup that gives the same price (37.5% margin = 60% markup), so no
+/// figure moves. Band rules already worked as markups and only change name.
+fn migrate_to_markup(value: &mut serde_json::Value) {
+    if value.get("subscription_markup").is_some() {
+        return;
+    }
+    let as_markup = |margin: &serde_json::Value| {
+        // A margin can't reach 100%; the app capped it at 95%.
+        let margin = margin.as_f64().unwrap_or(0.0).clamp(0.0, 0.95);
+        serde_json::json!(margin / (1.0 - margin))
+    };
+    let convert = |rule: &mut serde_json::Value, keep_value: bool| {
+        if rule["type"] == "margin" {
+            rule["type"] = serde_json::json!("markup");
+            if !keep_value {
+                rule["percent"] = as_markup(&rule["percent"]);
+            }
+        }
+    };
+
+    if let Some(fields) = value.as_object_mut() {
+        let margin = fields
+            .remove("subscription_margin")
+            .or_else(|| fields.remove("target_margin"))
+            .unwrap_or(serde_json::json!(0));
+        fields.insert("subscription_markup".into(), as_markup(&margin));
+    }
+    for item in value["onboarding"].as_array_mut().into_iter().flatten() {
+        convert(&mut item["price"], false);
+    }
+    for plan in value["plans"].as_array_mut().into_iter().flatten() {
+        convert(&mut plan["contractor_price"], false);
+        convert(&mut plan["consultant_price"], false);
+    }
+    for band in value["bands"].as_array_mut().into_iter().flatten() {
+        convert(&mut band["price"], true);
     }
 }
 
@@ -110,6 +187,8 @@ impl Db {
 
         let mut value: serde_json::Value = serde_json::from_str(&data).map_err(err)?;
         migrate_band_selection(&mut value);
+        migrate_structure(&mut value);
+        migrate_to_markup(&mut value);
         let mut project: Project = serde_json::from_value(value).map_err(err)?;
         apply_catalogue_rules(&mut project);
         Ok(project)
@@ -186,6 +265,69 @@ impl Db {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn margins_become_the_markups_that_give_the_same_price() {
+        let mut value = json!({
+            "subscription_margin": 0.35,
+            "onboarding": [{"price": {"type": "margin", "percent": 0.375}}, {"price": {"type": "amount", "value": 5000}}],
+            "plans": [{"contractor_price": {"type": "margin", "percent": 0.5}, "consultant_price": null}],
+            "bands": [{"price": {"type": "margin", "percent": 0.4}}],
+        });
+
+        migrate_to_markup(&mut value);
+
+        assert!(value.get("subscription_margin").is_none());
+        assert!((value["subscription_markup"].as_f64().unwrap() - 0.35 / 0.65).abs() < 1e-9);
+        assert_eq!(value["onboarding"][0]["price"], json!({"type": "markup", "percent": 0.6}));
+        assert_eq!(value["onboarding"][1]["price"], json!({"type": "amount", "value": 5000}));
+        assert_eq!(value["plans"][0]["contractor_price"], json!({"type": "markup", "percent": 1.0}));
+        assert_eq!(value["plans"][0]["consultant_price"], json!(null));
+        // Already a markup in all but name.
+        assert_eq!(value["bands"][0]["price"], json!({"type": "markup", "percent": 0.4}));
+
+        // A project already on markups is left alone.
+        let before = value.clone();
+        migrate_to_markup(&mut value);
+        assert_eq!(value, before);
+    }
+
+    #[test]
+    fn the_old_server_and_other_costs_become_rows_of_the_shared_services() {
+        let mut value = json!({"structure": {
+            "fixed_monthly": 800,
+            "per_building_monthly": 6,
+            "fee_percent": 0.029,
+        }});
+
+        migrate_structure(&mut value);
+
+        let structure = value["structure"].as_object().unwrap();
+        assert_eq!(structure.len(), 1, "only the list is left: {structure:?}");
+        let rows = structure["shared"].as_array().unwrap();
+        let server = rows.iter().find(|row| row["id"] == SERVER).unwrap();
+        assert_eq!(server["monthly"], json!(800));
+        let other = rows.iter().find(|row| row["id"] == "other-costs").unwrap();
+        assert_eq!(other["monthly"], json!(6));
+        // The whole default list comes along, and nothing else.
+        assert_eq!(rows.len(), default_shared_costs().len() + 1);
+    }
+
+    #[test]
+    fn a_project_saved_with_a_list_but_no_server_row_gets_one() {
+        let mut value = json!({"structure": {
+            "fixed_monthly": 130,
+            "monthly_with_margin": 0,
+            "shared": [{"id": "mailgun", "name": "Mailgun", "monthly": 12, "share": 0.5}],
+        }});
+
+        migrate_structure(&mut value);
+
+        let rows = value["structure"]["shared"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["id"], json!(SERVER));
+        assert_eq!(rows[0]["monthly"], json!(130));
+    }
 
     #[test]
     fn a_band_without_the_field_inherits_what_the_project_had_ticked() {

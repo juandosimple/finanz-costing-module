@@ -10,7 +10,7 @@ import { Button, Callout, Card, Field, NumberField, Select, TextInput } from "..
 import { fmtNum, fmtPct, perMonth } from "../../lib/format";
 import { useApp } from "../../store";
 import { PlanChart } from "./PlanChart";
-import { defaultSelection, OnboardingPicker, toggleSelection, type Money } from "./shared";
+import { defaultSelection, offered, OnboardingPicker, toggleSelection, type Money } from "./shared";
 
 /** Both account types buy the same plans; the screen shows one at a time. */
 type Account = "contractor" | "consultant";
@@ -86,14 +86,7 @@ export function StepPlans({
         </Callout>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-[70ch] text-sm text-ink-2">
-          Each plan includes a number of active projects or work records. A contractor and a consultant buy the same
-          plans at their own
-          price. Figures are for one account over year 1; the platform's own{" "}
-          {money(project.usage.platform_fixed_monthly)} a month ({money(project.usage.platform_fixed_monthly * 12)} a
-          year) is a cost of the business and is not in them.
-        </p>
+      <div className="flex justify-end">
         <Button size="sm" onClick={addPlan}>
           <Plus /> Add plan
         </Button>
@@ -208,8 +201,8 @@ function PlanCard({
               value={mode}
               label="Charge as"
               options={[
-                { value: "project", label: "Project margin" },
-                { value: "margin", label: "Account margin" },
+                { value: "project", label: "Project markup" },
+                { value: "markup", label: "Account markup" },
                 { value: "amount", label: "Fixed price" },
               ]}
               onChange={(next) =>
@@ -219,20 +212,20 @@ function PlanCard({
                       ? null
                       : next === "amount"
                         ? { type: "amount", value: row?.subscription.price ?? suggested }
-                        : { type: "margin", percent: project.subscription_margin },
+                        : { type: "markup", percent: project.subscription_markup },
                 })
               }
             />
           </Field>
-          <Field label={mode === "margin" ? "Margin" : "Price / account / month"}>
-            {rule !== null && rule.type === "margin" ? (
+          <Field label={mode === "markup" ? "Markup on cost" : "Price / account / month"}>
+            {rule !== null && rule.type === "markup" ? (
               <NumberField
                 value={rule.percent}
                 min={0}
                 scale={100}
                 dot="income"
                 suffix="%"
-                onChange={(v) => onChange({ [field]: { type: "margin", percent: Math.min(v, 0.95) } })}
+                onChange={(v) => onChange({ [field]: { type: "markup", percent: v } })}
               />
             ) : rule !== null && rule.type === "amount" ? (
               <NumberField
@@ -274,7 +267,7 @@ function PlanCard({
           )}
           {mode !== "project" && (
             <button type="button" className="text-accent hover:underline" onClick={() => onChange({ [field]: null })}>
-              · Use the project margin ({money(perMonth(suggested))} / month)
+              · Use the project markup ({money(perMonth(suggested))} / month)
             </button>
           )}
         </div>
@@ -283,7 +276,7 @@ function PlanCard({
       {project.onboarding.length > 0 && (
         <OnboardingPicker
           title="Onboarding this plan includes"
-          catalogue={project.onboarding}
+          catalogue={offered(project.onboarding)}
           selection={plan.onboarding}
           priced={computed?.onboarding_ids}
           blocked={computed?.blocked}
@@ -412,7 +405,7 @@ function PlanTable({ plans, account, money }: { plans: PlanResult[]; account: Ac
         <span className="size-[3px] rounded-full bg-axis" />
         <span>
           <span className="font-semibold text-ink">Profit</span> is in bold, green when the subscription keeps money in
-          year 1 and red when it loses it, after the payment fee. The onboarding is billed once, on top.
+          year 1 and red when it loses it. The onboarding is billed once, on top.
         </span>
       </p>
     </div>

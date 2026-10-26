@@ -29,14 +29,6 @@ subscription: StreamResult,
  */
 suggested_subscription_price: number | null, 
 /**
- * True when the band's subscription price was typed by hand.
- */
-subscription_price_is_manual: boolean, 
-/**
- * Share of the fixed costs carried by one building.
- */
-fixed_cost_per_building: number | null, 
-/**
  * Years 1, 2 and 3.
  */
 years: Array<YearResult>, 

@@ -153,15 +153,18 @@ fn prompt(project: &Project, result: &ProjectResult) -> String {
     out.push_str(&format!(
         "Currency: {currency}. Every figure below is in {currency}.\n\n\
          OUR COSTS\n\
-         - Fixed costs, whole platform: {} per month\n\
-         - Cost of one building: {} per month\n\
-         - Payment fee on every charge: {}%\n\
-         - Subscription margin we target: {}%\n\n",
-        project.structure.fixed_monthly,
-        project.structure.per_building_monthly,
-        project.structure.fee_percent * hundred,
-        project.subscription_margin * hundred,
+         - Markup we put on the cost of recurring services: {}%\n",
+        project.subscription_markup * hundred,
     ));
+    for cost in project.structure.shared.iter().filter(|cost| !cost.removed) {
+        out.push_str(&format!(
+            "- {}, charged at cost: {} per month, of which this client pays {}%\n",
+            cost.name,
+            cost.monthly,
+            cost.share * hundred
+        ));
+    }
+    out.push('\n');
 
     if !result.onboarding_lines.is_empty() {
         out.push_str("ONBOARDING, BILLED ONCE (cost -> price we charge today)\n");
@@ -528,10 +531,11 @@ mod tests {
         let text = prompt(&project, &plan_project(&project));
 
         assert!(text.contains("GBP"));
-        assert!(text.contains("Fixed costs"));
+        assert!(text.contains("Server, charged at cost"));
+        assert!(text.contains("Mailgun, charged at cost"));
         assert!(text.contains("Scan to BIM"));
-        assert!(text.contains("Band 1 — 5 buildings"));
-        assert!(text.contains("Band 6 — 200 buildings"));
+        assert!(text.contains("Band 1 — 1 buildings"));
+        assert!(text.contains("Band 3 — 50 buildings"));
         assert!(text.contains("Building compliance software"));
         assert!(text.contains("Acme"));
     }

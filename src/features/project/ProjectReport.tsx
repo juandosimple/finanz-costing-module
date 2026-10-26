@@ -6,6 +6,7 @@ import type { Project } from "../../bindings/Project";
 import type { ProjectResult } from "../../bindings/ProjectResult";
 import { fmtDate, fmtMoney, fmtNum, fmtPct, perMonth } from "../../lib/format";
 import { BASIS_LABELS, RECURRENCE_LABELS, TEMPLATE_LABELS } from "../../lib/labels";
+import { offered } from "./shared";
 
 /**
  * The whole project as one document: what it costs us, what we charge, every
@@ -100,13 +101,14 @@ export function ProjectReport({
                 />
               ))}
             </>
-          ) : (
-            <>
-              <Row label="Fixed costs, whole platform" value={`${money(project.structure.fixed_monthly)} / month`} />
-              <Row label="Cost of one building" value={`${money(project.structure.per_building_monthly)} / month`} />
-            </>
-          )}
-          <Row label="Payment fee on every charge" value={fmtPct(project.structure.fee_percent)} />
+          ) : null}
+          {project.structure.shared.filter((cost) => !cost.removed).map((cost) => (
+            <Row
+              key={cost.id}
+              label={`${cost.name}, at cost`}
+              value={`${money(cost.monthly * cost.share)} / month · ${fmtPct(cost.share)} of ${money(cost.monthly)}`}
+            />
+          ))}
 
           {project.onboarding.length > 0 && (
             <table className="mt-4 w-full text-sm">
@@ -119,7 +121,7 @@ export function ProjectReport({
                 </tr>
               </thead>
               <tbody>
-                {project.onboarding.map((item) => (
+                {offered(project.onboarding).map((item) => (
                   <tr key={item.id} className="border-b border-line last:border-0">
                     <td className="py-2 pr-4 text-ink">
                       {item.name}
@@ -136,11 +138,11 @@ export function ProjectReport({
         </Section>
 
         <Section title="2 · What we charge">
-          <Row label="Subscription margin" value={fmtPct(project.subscription_margin)} />
+          <Row label="Subscription markup" value={fmtPct(project.subscription_markup)} />
           <p className="mt-1 text-xs text-muted">
             {plansOnly
-              ? "The subscription price per account covers its plan's share of the server and the database, its storage and downloads, the payment fee and that margin."
-              : "The subscription price per building covers the structure costs, the payment fee and that margin."}{" "}
+              ? "The subscription price per account covers its plan's share of the server and the database, its storage and downloads with that markup on top, plus its share of the shared services at cost."
+              : "The subscription price per building covers the platform and its services at cost, and the recurring services with that markup on top."}{" "}
             Onboarding is billed once, apart from it.
           </p>
 

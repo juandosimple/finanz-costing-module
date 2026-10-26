@@ -11,7 +11,7 @@ use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::num::{clamp01, div, money, ratio};
+use crate::num::{div, money, ratio};
 use crate::project::{quantity_of, resolve, stream, BlockedItem, PriceRule, Project, Recurrence, StreamResult};
 
 const MONTHS: Decimal = dec!(12);
@@ -88,7 +88,7 @@ pub struct Plan {
     #[serde(default)]
     #[ts(type = "number")]
     pub consultant_storage_gb: Decimal,
-    /// How a contractor is charged. `None` follows the project margin; an
+    /// How a contractor is charged. `None` follows the project markup; an
     /// amount is the yearly price of one account.
     #[serde(default)]
     pub contractor_price: Option<PriceRule>,
@@ -124,7 +124,7 @@ pub struct AccountResult {
     pub all_users: StreamResult,
     /// Billed once, for one account.
     pub onboarding: StreamResult,
-    /// Yearly price that would hit the project margin.
+    /// Yearly price the project markup gives.
     #[ts(type = "number | null")]
     pub suggested_price: Option<Decimal>,
     pub price_is_manual: bool,
@@ -167,7 +167,7 @@ pub fn default_plans(onboarding: &[String]) -> Vec<Plan> {
     ]
 }
 
-pub(crate) fn plan_plans(project: &Project, subscription_room: Decimal, fee: Decimal) -> Vec<PlanResult> {
+pub(crate) fn plan_plans(project: &Project, markup: Decimal) -> Vec<PlanResult> {
     project
         .plans
         .iter()
@@ -197,7 +197,7 @@ pub(crate) fn plan_plans(project: &Project, subscription_room: Decimal, fee: Dec
             }
 
             let account = |kind: AccountType, rule: Option<PriceRule>, storage: Decimal| {
-                plan_account(project, plan, kind, rule, storage, one_off, annual, subscription_room, fee)
+                plan_account(project, plan, kind, rule, storage, one_off, annual, markup)
             };
 
             PlanResult {
@@ -224,8 +224,7 @@ fn plan_account(
     storage_gb: Decimal,
     (one_off_cost, one_off_price): (Decimal, Decimal),
     (annual_cost, annual_price): (Decimal, Decimal),
-    subscription_room: Decimal,
-    fee: Decimal,
+    markup: Decimal,
 ) -> AccountResult {
     let usage = &project.usage;
     let projects = plan.projects.max(Decimal::ZERO);
@@ -236,29 +235,29 @@ fn plan_account(
     // The plan's storage is what a year adds up to, so a month adds a twelfth.
     let uploaded = storage_gb.max(Decimal::ZERO) / MONTHS;
     let downloads = uploaded * usage.download_share.max(Decimal::ZERO) * usage.download_per_gb.max(Decimal::ZERO);
+    // The shared services are paid once by the plan's client, so each of its
+    // users carries a part, at cost.
+    let users = plan.users.max(Decimal::ZERO);
+    let shared = div(project.structure.shared_monthly(), users).unwrap_or_default();
 
     // Month m keeps m months of uploads.
-    let month = |m: Decimal| fixed + uploaded * m * storage + downloads;
-    let year_cost = MONTHS * (fixed + downloads) + storage * uploaded * STORED_GB_MONTHS_PER_GB + annual_cost;
+    let month = |m: Decimal| fixed + shared + uploaded * m * storage + downloads;
+    let with_margin = MONTHS * (fixed + downloads) + storage * uploaded * STORED_GB_MONTHS_PER_GB + annual_cost;
+    let year_cost = MONTHS * shared + with_margin;
 
-    let recoverable = year_cost - annual_price;
-    let price_at = |room: Decimal| {
-        Some(recoverable)
-            .filter(|_| room > Decimal::ZERO)
-            .and_then(|cost| div(cost, room))
-            .map(money)
-    };
-    let suggested_price = price_at(subscription_room);
+    let to_mark_up = (with_margin - annual_price).max(Decimal::ZERO);
+    let price_at = |markup: Decimal| money(MONTHS * shared + to_mark_up * (Decimal::ONE + markup.max(Decimal::ZERO)));
+    let suggested_price = Some(price_at(markup));
     let price = match rule {
         None => suggested_price,
         Some(PriceRule::Amount { value }) => Some(money(value.max(Decimal::ZERO))),
-        Some(PriceRule::Margin { percent }) => price_at(Decimal::ONE - fee - clamp01(percent)),
+        Some(PriceRule::Markup { percent }) => Some(price_at(percent)),
     };
-    let subscription_price = price.unwrap_or_default() + annual_price;
-    let subscription = stream(year_cost, subscription_price, fee, Decimal::ONE);
+    // Whatever the plan says, an account never bills less than it costs.
+    let subscription_price = (price.unwrap_or_default() + annual_price).max(year_cost);
+    let subscription = stream(year_cost, subscription_price, Decimal::ONE);
     // Built from the rounded figures, so N users are exactly N times one.
-    let users = plan.users.max(Decimal::ZERO);
-    let all_users = stream(subscription.cost * users, subscription.price * users, fee, Decimal::ONE);
+    let all_users = stream(subscription.cost * users, subscription.price * users, Decimal::ONE);
 
     AccountResult {
         account: kind,
@@ -268,7 +267,7 @@ fn plan_account(
         cost_last_month: money(month(MONTHS)),
         subscription,
         all_users,
-        onboarding: stream(one_off_cost, one_off_price, fee, Decimal::ONE),
+        onboarding: stream(one_off_cost, one_off_price, Decimal::ONE),
         suggested_price,
         price_is_manual: rule.is_some(),
     }
@@ -293,6 +292,7 @@ mod tests {
         for plan in &mut p.plans {
             plan.onboarding.clear();
         }
+        p.structure.shared.clear();
         p
     }
 
@@ -348,26 +348,56 @@ mod tests {
     #[test]
     fn each_account_type_gets_its_own_price() {
         let mut p = contractors();
-        p.subscription_margin = dec!(0.35);
-        p.structure.fee_percent = dec!(0.029);
+        p.subscription_markup = dec!(0.35);
         for plan in &mut p.plans {
             if plan.id == "gold" {
-                plan.consultant_price = Some(PriceRule::Amount { value: dec!(120) });
+                plan.consultant_price = Some(PriceRule::Amount { value: dec!(1000) });
             }
         }
         let result = plan_project(&p);
         let gold = plan(&result, "gold");
 
-        // 423 a year / (1 − 0.029 − 0.35)
-        assert_eq!(gold.contractor.suggested_price, Some(dec!(681.16)));
-        assert_eq!(gold.contractor.subscription.price, dec!(681.16));
+        // 423 a year × 1.35
+        assert_eq!(gold.contractor.suggested_price, Some(dec!(571.05)));
+        assert_eq!(gold.contractor.subscription.price, dec!(571.05));
         assert!(!gold.contractor.price_is_manual);
-        assert!((gold.contractor.subscription.margin.unwrap() - dec!(0.35)).abs() < dec!(0.001));
+        assert_eq!(gold.contractor.subscription.profit, dec!(148.05));
 
         assert!(gold.consultant.price_is_manual);
-        assert_eq!(gold.consultant.subscription.price, dec!(120));
-        // 120 − 3.48 fee − 423 cost: a fixed price well under what it costs.
-        assert_eq!(gold.consultant.subscription.profit, dec!(-306.48));
+        assert_eq!(gold.consultant.subscription.price, dec!(1000));
+        assert_eq!(gold.consultant.subscription.profit, dec!(577));
+    }
+
+    #[test]
+    fn a_fixed_price_under_cost_is_raised_to_the_cost() {
+        let mut p = contractors();
+        for plan in &mut p.plans {
+            plan.contractor_price = Some(PriceRule::Amount { value: dec!(1) });
+        }
+        let result = plan_project(&p);
+        let gold = &plan(&result, "gold").contractor;
+        assert_eq!(gold.subscription.price, gold.subscription.cost);
+    }
+
+    #[test]
+    fn the_shared_services_are_split_between_the_plans_users_at_cost() {
+        let mut p = contractors();
+        let before = plan(&plan_project(&p), "basic").clone();
+        p.structure.shared = vec![crate::project::SharedCost {
+            id: "mailgun".into(),
+            name: "Mailgun".into(),
+            monthly: dec!(12),
+            share: Decimal::ONE,
+            removed: false,
+        }];
+        for plan in &mut p.plans {
+            plan.users = dec!(3);
+        }
+        let after = plan(&plan_project(&p), "basic").clone();
+
+        // 144 a year over 3 users, and no margin on it.
+        assert_eq!(after.contractor.subscription.cost - before.contractor.subscription.cost, dec!(48));
+        assert_eq!(after.contractor.subscription.price - before.contractor.subscription.price, dec!(48));
     }
 
     #[test]
@@ -401,7 +431,8 @@ mod tests {
 
         assert_eq!(basic.all_users.cost, basic.subscription.cost * dec!(5));
         assert_eq!(basic.all_users.price, basic.subscription.price * dec!(5));
-        assert_eq!(basic.all_users.margin, basic.subscription.margin);
+        // The same up to rounding: each ratio is taken from rounded totals.
+        assert!((basic.all_users.margin.unwrap() - basic.subscription.margin.unwrap()).abs() < dec!(0.0002));
         // A single user is the account itself.
         let gold = &plan(&result, "gold").contractor;
         assert_eq!(gold.all_users.price, gold.subscription.price);

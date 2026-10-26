@@ -22,7 +22,8 @@ use crate::plans::{default_plans, plan_plans, Plan, PlanResult, UsageCosts};
 use crate::Currency;
 
 fn default_price_rule() -> PriceRule {
-    PriceRule::Margin { percent: dec!(0.375) }
+    // The same prices a 37.5% margin used to give.
+    PriceRule::Markup { percent: dec!(0.6) }
 }
 
 /// What a band includes unless you say otherwise.
@@ -78,20 +79,66 @@ impl ProjectTemplate {
     }
 }
 
-/// Step 2a: what running the platform costs, regardless of the deal.
+/// Step 2a: what running the platform costs, regardless of the deal: the
+/// server and the services it uses, per month, spread across the buildings of
+/// each band.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StructureCosts {
-    /// Monthly costs that don't grow with buildings (hosting, team, tools).
-    /// They are spread across the buildings of each band.
+    /// Charged at cost for the share this client pays.
+    #[serde(default = "default_shared_costs")]
+    pub shared: Vec<SharedCost>,
+}
+
+impl StructureCosts {
+    /// What the shared services charge this client every month.
+    pub(crate) fn shared_monthly(&self) -> Decimal {
+        self.shared
+            .iter()
+            .filter(|cost| !cost.removed)
+            .map(|cost| cost.monthly.max(Decimal::ZERO) * clamp01(cost.share))
+            .sum()
+    }
+}
+
+/// A service the platform pays for (server, mail, storage, certifications). It carries
+/// no margin; the share says how much of it this client covers, so one client
+/// can pay for most of it and another for none.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SharedCost {
+    pub id: String,
+    pub name: String,
     #[ts(type = "number")]
-    pub fixed_monthly: Decimal,
-    /// Monthly cost of one building (connectivity, storage, AI, licences).
+    pub monthly: Decimal,
+    /// 0..1 of `monthly` this client pays.
     #[ts(type = "number")]
-    pub per_building_monthly: Decimal,
-    /// Payment fee taken out of every charge.
-    #[ts(type = "number")]
-    pub fee_percent: Decimal,
+    pub share: Decimal,
+    /// Deleted in step 2 but kept so it can be restored: it costs nothing meanwhile.
+    #[serde(default)]
+    pub removed: bool,
+}
+
+/// Id of the server row, which projects saved with a separate server cost fill in.
+pub const SERVER: &str = "server";
+
+pub fn default_shared_costs() -> Vec<SharedCost> {
+    let cost = |id: &str, name: &str, monthly: Decimal, share: Decimal| SharedCost {
+        id: id.into(),
+        name: name.into(),
+        monthly,
+        share,
+        removed: false,
+    };
+    vec![
+        cost(SERVER, "Server", dec!(130), Decimal::ONE),
+        cost("object-storage", "Object storage", dec!(5), dec!(0.5)),
+        cost("mailgun", "Mailgun", dec!(12), dec!(0.5)),
+        cost("apple-certification", "Apple certification (paid yearly)", dec!(100), dec!(0.1)),
+        cost("iso-certification", "ISO certification (4,400 paid yearly)", dec!(4400), dec!(0.01)),
+        cost("os-api", "OS API", dec!(8), dec!(0.05)),
+        cost("backups", "Backups", dec!(16), Decimal::ONE),
+    ]
 }
 
 /// How the quantity of an onboarding line is counted.
@@ -115,13 +162,13 @@ pub enum Recurrence {
     Annual,
 }
 
-/// Step 3: what to charge for one cost — a margin over it, or a fixed price.
+/// Step 3: what to charge for one cost — a markup on it, or a fixed price.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[ts(export)]
 pub enum PriceRule {
-    /// Price = cost / (1 − percent). 37.5% is the same as multiplying by 1.6.
-    Margin {
+    /// Price = cost × (1 + percent): 60% on 2,000 sells at 3,200.
+    Markup {
         #[ts(type = "number")]
         percent: Decimal,
     },
@@ -138,10 +185,7 @@ impl PriceRule {
         let cost = cost.max(Decimal::ZERO);
         match self {
             PriceRule::Amount { value } => value.max(Decimal::ZERO),
-            PriceRule::Margin { percent } => {
-                let room = Decimal::ONE - clamp01(percent);
-                div(cost, room).unwrap_or(cost)
-            }
+            PriceRule::Markup { percent } => cost * (Decimal::ONE + percent.max(Decimal::ZERO)),
         }
     }
 
@@ -174,6 +218,10 @@ pub struct OnboardingItem {
     /// Ids this element already covers, so a band can't take both.
     #[serde(default)]
     pub makes_unnecessary: Vec<String>,
+    /// Deleted in step 2 but kept so it can be restored: it is neither priced nor
+    /// offered to a band or a plan.
+    #[serde(default)]
+    pub removed: bool,
 }
 
 /// Why an element can't be picked in a band with its current selection.
@@ -203,7 +251,8 @@ pub struct Band {
     pub id: String,
     #[ts(type = "number")]
     pub buildings: Decimal,
-    /// How this band's subscription is charged. `None` follows the project margin.
+    /// How this band's subscription is charged. `None` follows the project markup;
+    /// a `Markup` of its own goes on the band's whole subscription cost.
     #[serde(default)]
     pub price: Option<PriceRule>,
     /// Ids of the onboarding elements this scenario includes.
@@ -266,10 +315,9 @@ pub struct Project {
     pub notes: String,
     pub template: ProjectTemplate,
     pub currency: Currency,
-    /// Step 3: margin the suggested subscription price leaves.
-    #[serde(alias = "target_margin")]
+    /// Step 3: markup on the recurring services the subscription bills.
     #[ts(type = "number")]
-    pub subscription_margin: Decimal,
+    pub subscription_markup: Decimal,
     pub structure: StructureCosts,
     /// What one account's usage costs. Only plans use it.
     #[serde(default)]
@@ -331,8 +379,6 @@ pub struct StreamResult {
     #[ts(type = "number | null")]
     pub price_per_building: Option<Decimal>,
     #[ts(type = "number")]
-    pub fees: Decimal,
-    #[ts(type = "number")]
     pub profit: Decimal,
     #[ts(type = "number | null")]
     pub margin: Option<Decimal>,
@@ -379,11 +425,6 @@ pub struct BandResult {
     /// Subscription price per building that would hit the target margin.
     #[ts(type = "number | null")]
     pub suggested_subscription_price: Option<Decimal>,
-    /// True when the band's subscription price was typed by hand.
-    pub subscription_price_is_manual: bool,
-    /// Share of the fixed costs carried by one building.
-    #[ts(type = "number | null")]
-    pub fixed_cost_per_building: Option<Decimal>,
     /// Years 1, 2 and 3.
     pub years: Vec<YearResult>,
     /// The three years added up.
@@ -460,7 +501,7 @@ pub(crate) fn resolve<'a>(
     let mut kept: Vec<&OnboardingItem> = Vec::new();
     let mut blocked: Vec<BlockedItem> = Vec::new();
 
-    for item in catalogue.iter().filter(|item| wanted.contains(&item.id)) {
+    for item in catalogue.iter().filter(|item| !item.removed && wanted.contains(&item.id)) {
         if let Some((_, by)) = covered.iter().find(|(id, _)| *id == item.id) {
             blocked.push(BlockedItem {
                 id: item.id.clone(),
@@ -489,7 +530,7 @@ pub(crate) fn resolve<'a>(
     }
 
     // What the band hasn't picked but couldn't pick either, so the UI can grey it out.
-    for item in catalogue.iter().filter(|item| !wanted.contains(&item.id)) {
+    for item in catalogue.iter().filter(|item| !item.removed && !wanted.contains(&item.id)) {
         if let Some((_, by)) = covered.iter().find(|(id, _)| *id == item.id) {
             blocked.push(BlockedItem {
                 id: item.id.clone(),
@@ -512,16 +553,9 @@ pub(crate) fn resolve<'a>(
 
 /// Costs, prices and margins for every band.
 pub fn plan_project(project: &Project) -> ProjectResult {
-    let fee = clamp01(project.structure.fee_percent);
-    let subscription_room = Decimal::ONE - fee - clamp01(project.subscription_margin);
+    let markup = project.subscription_markup.max(Decimal::ZERO);
     let mut warnings = Vec::new();
 
-    if subscription_room <= Decimal::ZERO {
-        warnings.push(
-            "The payment fee plus the subscription margin reach 100%: no subscription price can be suggested."
-                .into(),
-        );
-    }
     match project.template {
         ProjectTemplate::BuildingOwners if project.bands.is_empty() => {
             warnings.push("Add at least one building band.".into());
@@ -538,11 +572,11 @@ pub fn plan_project(project: &Project) -> ProjectResult {
         .iter()
         .enumerate()
         .map(|(index, band)| {
-            plan_band(project, band, index as u32 + 1, subscription_room, fee)
+            plan_band(project, band, index as u32 + 1, markup)
         })
         .collect();
 
-    let onboarding_lines: Vec<OnboardingLine> = project.onboarding.iter().map(price_line).collect();
+    let onboarding_lines: Vec<OnboardingLine> = project.onboarding.iter().filter(|item| !item.removed).map(price_line).collect();
 
     for line in onboarding_lines.iter().filter(|l| l.unit_price < l.unit_cost) {
         warnings.push(format!("\"{}\" is priced below its internal cost.", line.name));
@@ -551,7 +585,7 @@ pub fn plan_project(project: &Project) -> ProjectResult {
     ProjectResult {
         currency: project.currency,
         bands,
-        plans: plan_plans(project, subscription_room, fee),
+        plans: plan_plans(project, markup),
         onboarding_lines,
         warnings,
     }
@@ -579,15 +613,13 @@ pub(crate) fn quantity_of(item: &OnboardingItem, buildings: Decimal) -> Decimal 
     }
 }
 
-pub(crate) fn stream(cost: Decimal, price: Decimal, fee: Decimal, buildings: Decimal) -> StreamResult {
-    let fees = price * fee;
-    let profit = price - fees - cost;
+pub(crate) fn stream(cost: Decimal, price: Decimal, buildings: Decimal) -> StreamResult {
+    let profit = price - cost;
     StreamResult {
         cost: money(cost),
         cost_per_building: div(cost, buildings).map(money),
         price: money(price),
         price_per_building: div(price, buildings).map(money),
-        fees: money(fees),
         profit: money(profit),
         margin: div(profit, price).map(ratio),
     }
@@ -597,8 +629,7 @@ fn plan_band(
     project: &Project,
     band: &Band,
     position: u32,
-    subscription_room: Decimal,
-    fee: Decimal,
+    markup: Decimal,
 ) -> BandResult {
     let buildings = band.buildings.max(Decimal::ZERO);
     let structure = &project.structure;
@@ -628,32 +659,31 @@ fn plan_band(
         }
     }
 
-    let fixed_annual = structure.fixed_monthly.max(Decimal::ZERO) * dec!(12);
-    let per_building_annual =
-        structure.per_building_monthly.max(Decimal::ZERO) * dec!(12) * buildings;
-    let subscription_cost = fixed_annual + per_building_annual + annual_service_cost;
+    // The platform passes through at cost; the margin is earned on the
+    // recurring services of the catalogue.
+    let at_cost_annual = structure.shared_monthly() * dec!(12);
+    let subscription_cost = at_cost_annual + annual_service_cost;
 
-    // What the subscription has to recover per building, before margin and fees.
-    let recoverable_per_building = div(subscription_cost - annual_service_price, buildings);
-    let price_at = |room: Decimal| {
-        recoverable_per_building
-            .filter(|_| room > Decimal::ZERO)
-            .and_then(|per_building| div(per_building, room))
-            .map(money)
-    };
-
-    let suggested_subscription_price = price_at(subscription_room);
+    // A hand-priced recurring service already recovers its own cost, and more.
+    let to_mark_up = (annual_service_cost - annual_service_price).max(Decimal::ZERO);
+    let suggested_subscription_price =
+        div(at_cost_annual + to_mark_up * (Decimal::ONE + markup), buildings).map(money);
     let subscription_price_per_building = match band.price {
         None => suggested_subscription_price,
         Some(PriceRule::Amount { value }) => Some(money(value.max(Decimal::ZERO))),
-        Some(PriceRule::Margin { percent }) => price_at(Decimal::ONE - fee - clamp01(percent)),
+        // On top of everything the subscription costs, platform included: 40%
+        // on a cost of 100 bills 140.
+        Some(PriceRule::Markup { percent }) => {
+            let marked_up = subscription_cost * (Decimal::ONE + percent.max(Decimal::ZERO));
+            div((marked_up - annual_service_price).max(Decimal::ZERO), buildings).map(money)
+        }
     };
-    let subscription_price = subscription_price_per_building
-        .map(|price| price * buildings + annual_service_price)
-        .unwrap_or(annual_service_price);
+    // Whatever the band says, the subscription never bills less than it costs.
+    let subscription_price = (subscription_price_per_building.unwrap_or_default() * buildings + annual_service_price)
+        .max(subscription_cost);
 
-    let onboarding = stream(one_off_cost, one_off_price, fee, buildings);
-    let subscription = stream(subscription_cost, subscription_price, fee, buildings);
+    let onboarding = stream(one_off_cost, one_off_price, buildings);
+    let subscription = stream(subscription_cost, subscription_price, buildings);
 
     // Year 1 pays the onboarding on top; years 2 and 3 are the subscription again.
     let year = |year: u32, price: Decimal, cost: Decimal, profit: Decimal| YearResult {
@@ -686,8 +716,6 @@ fn plan_band(
         onboarding_ids: selection.iter().map(|item| item.id.clone()).collect(),
         blocked,
         suggested_subscription_price,
-        subscription_price_is_manual: band.price.is_some(),
-        fixed_cost_per_building: div(fixed_annual, buildings).map(money),
         three_year_price: money(three_year_price),
         three_year_price_per_building: div(three_year_price, buildings).map(money),
         three_year_profit: money(three_year_profit),
@@ -758,11 +786,9 @@ impl Project {
             notes: String::new(),
             template,
             currency,
-            subscription_margin: dec!(0.35),
+            subscription_markup: dec!(0.4),
             structure: StructureCosts {
-                fixed_monthly: dec!(800),
-                per_building_monthly: dec!(6),
-                fee_percent: dec!(0.029),
+                shared: default_shared_costs(),
             },
             onboarding: template.catalogue(),
             usage: UsageCosts::default(),
@@ -808,14 +834,7 @@ pub fn default_bands(template: ProjectTemplate) -> Vec<Band> {
         price: None,
         onboarding: selection.clone(),
     };
-    vec![
-        band("b1", dec!(5)),
-        band("b2", dec!(20)),
-        band("b3", dec!(50)),
-        band("b4", dec!(70)),
-        band("b5", dec!(100)),
-        band("b6", dec!(200)),
-    ]
+    vec![band("b1", dec!(1)), band("b2", dec!(5)), band("b3", dec!(50))]
 }
 
 /// The full onboarding catalogue: costs, and the rule each one is charged at.
@@ -844,6 +863,7 @@ fn modle_catalogue() -> Vec<OnboardingItem> {
         price,
         exclusive_group: None,
         makes_unnecessary: Vec::new(),
+        removed: false,
     };
 
     let data = "Data & Modelling";
@@ -889,15 +909,27 @@ fn modle_catalogue() -> Vec<OnboardingItem> {
 mod tests {
     use super::*;
 
+    /// A new project, with the wider spread of bands the figures below are worked on.
     fn project(template: ProjectTemplate) -> Project {
-        Project::from_template(
+        let mut p = Project::from_template(
             "p".into(),
             "Test".into(),
             "Client".into(),
             "now".into(),
             template,
             Currency::GBP,
-        )
+        );
+        if let Some(first) = p.bands.first().cloned() {
+            p.bands = [5, 20, 50, 70, 100, 200]
+                .into_iter()
+                .map(|buildings| Band {
+                    id: format!("b{buildings}"),
+                    buildings: Decimal::from(buildings),
+                    ..first.clone()
+                })
+                .collect();
+        }
+        p
     }
 
     /// A building-owners project whose bands pick no onboarding: structure costs only.
@@ -997,76 +1029,134 @@ mod tests {
     }
 
     #[test]
-    fn bands_are_priced_at_their_highest_building_count() {
-        let result = plan_project(&project(ProjectTemplate::BuildingOwners));
-        let buildings: Vec<Decimal> = result.bands.iter().map(|b| b.buildings).collect();
-        assert_eq!(buildings, vec![dec!(5), dec!(20), dec!(50), dec!(70), dec!(100), dec!(200)]);
+    fn a_new_project_starts_with_bands_of_1_5_and_50_buildings() {
+        let p = Project::from_template(
+            "p".into(),
+            "Test".into(),
+            String::new(),
+            "now".into(),
+            ProjectTemplate::BuildingOwners,
+            Currency::GBP,
+        );
+        let buildings: Vec<Decimal> = p.bands.iter().map(|b| b.buildings).collect();
+        assert_eq!(buildings, vec![dec!(1), dec!(5), dec!(50)]);
+    }
+
+    /// Nothing but a server of this much a month, all of it on this client.
+    fn server(monthly: Decimal) -> StructureCosts {
+        StructureCosts {
+            shared: vec![SharedCost {
+                id: SERVER.into(),
+                name: "Server".into(),
+                monthly,
+                share: Decimal::ONE,
+                removed: false,
+            }],
+        }
     }
 
     #[test]
-    fn fixed_costs_are_spread_across_the_buildings_of_the_band() {
+    fn the_platform_is_spread_across_the_buildings_of_the_band() {
         let mut p = structure_only();
-        p.structure = StructureCosts {
-            fixed_monthly: dec!(1000),
-            per_building_monthly: dec!(10),
-            fee_percent: Decimal::ZERO,
-        };
+        p.structure = server(dec!(1000));
         let result = plan_project(&p);
 
-        let small = band_of(&result, dec!(5));
-        assert_eq!(small.fixed_cost_per_building, Some(dec!(2400)));
-        assert_eq!(small.subscription.cost_per_building, Some(dec!(2520)));
-
-        let large = band_of(&result, dec!(200));
-        assert_eq!(large.fixed_cost_per_building, Some(dec!(60)));
-        assert_eq!(large.subscription.cost_per_building, Some(dec!(180)));
+        assert_eq!(band_of(&result, dec!(5)).subscription.cost_per_building, Some(dec!(2400)));
+        assert_eq!(band_of(&result, dec!(200)).subscription.cost_per_building, Some(dec!(60)));
     }
 
     #[test]
-    fn the_suggested_subscription_price_leaves_its_margin() {
+    fn the_markup_goes_on_the_recurring_services_not_the_platform() {
         let mut p = structure_only();
-        p.subscription_margin = dec!(0.35);
-        p.structure = StructureCosts {
-            fixed_monthly: dec!(1000),
-            per_building_monthly: dec!(10),
-            fee_percent: dec!(0.029),
-        };
+        p.subscription_markup = dec!(0.5);
+        p.structure = server(dec!(1000));
+        set_band_selection(&mut p, dec!(200), &["compliance-review"]);
         let result = plan_project(&p);
         let band = band_of(&result, dec!(200));
 
-        // 180 a year per building / (1 − 0.029 − 0.35)
-        assert_eq!(band.suggested_subscription_price, Some(dec!(289.86)));
-        assert!(!band.subscription_price_is_manual);
-        assert!((band.subscription.margin.unwrap() - dec!(0.35)).abs() < dec!(0.001));
+        // (12,000 at cost + 600,000 of compliance reviews × 1.5) / 200 buildings
+        assert_eq!(band.suggested_subscription_price, Some(dec!(4560)));
+        // The profit is the markup on the reviews alone.
+        assert_eq!(band.subscription.profit, dec!(300000));
+
+        // A markup has no ceiling: 150% bills two and a half times the reviews.
+        p.subscription_markup = dec!(1.5);
+        let band = band_of(&plan_project(&p), dec!(200)).clone();
+        assert_eq!(band.subscription.profit, dec!(900000));
+
+        // With nothing to earn on, the price is just what the platform costs.
+        let bare = band_of(&result, dec!(5));
+        assert_eq!(bare.subscription.price, bare.subscription.cost);
     }
 
     #[test]
-    fn a_band_price_can_be_typed_or_carry_its_own_margin() {
+    fn a_band_price_can_be_typed() {
         let mut p = structure_only();
-        p.subscription_margin = dec!(0.35);
-        p.structure = StructureCosts {
-            fixed_monthly: dec!(1000),
-            per_building_monthly: dec!(10),
-            fee_percent: Decimal::ZERO,
-        };
+        p.structure = server(dec!(1000));
         for band in &mut p.bands {
-            match band.buildings {
-                b if b == dec!(200) => band.price = Some(PriceRule::Amount { value: dec!(500) }),
-                b if b == dec!(100) => band.price = Some(PriceRule::Margin { percent: dec!(0.5) }),
-                _ => {}
+            if band.buildings == dec!(200) {
+                band.price = Some(PriceRule::Amount { value: dec!(500) });
             }
+        }
+        let typed = band_of(&plan_project(&p), dec!(200)).clone();
+        assert_eq!(typed.subscription.price, dec!(100000)); // 200 × 500
+        assert_eq!(typed.subscription.margin, Some(dec!(0.88)));
+    }
+
+    #[test]
+    fn a_band_of_its_own_marks_up_the_whole_cost() {
+        let mut p = structure_only();
+        p.structure = server(dec!(1000));
+        for band in &mut p.bands {
+            if band.buildings == dec!(5) {
+                band.price = Some(PriceRule::Markup { percent: dec!(0.4) });
+            }
+        }
+        let band = band_of(&plan_project(&p), dec!(5)).clone();
+
+        // 12,000 of platform, 40% on top.
+        assert_eq!(band.subscription.cost, dec!(12000));
+        assert_eq!(band.subscription.price, dec!(16800));
+        assert_eq!(band.subscription.profit, dec!(4800));
+    }
+
+    #[test]
+    fn the_subscription_never_bills_less_than_it_costs() {
+        let mut p = structure_only();
+        p.structure = server(dec!(1000));
+        for band in &mut p.bands {
+            band.price = Some(PriceRule::Amount { value: dec!(1) });
         }
         let result = plan_project(&p);
 
-        let typed = band_of(&result, dec!(200));
-        assert!(typed.subscription_price_is_manual);
-        assert_eq!(typed.subscription.price, dec!(100000)); // 200 × 500
-        assert_eq!(typed.subscription.margin, Some(dec!(0.64)));
+        for band in [dec!(5), dec!(200)] {
+            let subscription = &band_of(&result, band).subscription;
+            assert_eq!(subscription.price, subscription.cost);
+            assert_eq!(subscription.profit, Decimal::ZERO);
+        }
+    }
 
-        // 300 of cost per building at 50%
-        let own_margin = band_of(&result, dec!(100));
-        assert_eq!(own_margin.subscription.price_per_building, Some(dec!(480)));
-        assert!((own_margin.subscription.margin.unwrap() - dec!(0.5)).abs() < dec!(0.001));
+    #[test]
+    fn a_shared_service_is_charged_at_cost_for_the_clients_share() {
+        let mut p = structure_only();
+        p.structure = StructureCosts {
+            shared: vec![SharedCost {
+                id: "mailgun".into(),
+                name: "Mailgun".into(),
+                monthly: dec!(12),
+                share: dec!(0.2),
+                removed: false,
+            }],
+        };
+        let result = plan_project(&p);
+        let band = band_of(&result, dec!(5));
+
+        // 20% of 12 a month, over a year, with no margin on top.
+        assert_eq!(band.subscription.cost, dec!(28.8));
+        assert_eq!(band.subscription.price, dec!(28.8));
+        // Deleted, it costs nothing until it is restored.
+        p.structure.shared[0].removed = true;
+        assert_eq!(band_of(&plan_project(&p), dec!(5)).subscription.cost, Decimal::ZERO);
     }
 
     #[test]
@@ -1080,7 +1170,7 @@ mod tests {
 
         let scan = line_of(&result, "scan-to-bim");
         assert!(!scan.manual_price);
-        assert_eq!(scan.unit_price, dec!(6400)); // 4,000 / (1 − 0.375)
+        assert_eq!(scan.unit_price, dec!(6400)); // 4,000 × 1.6
         assert_eq!(scan.margin, Some(dec!(0.375)));
     }
 
@@ -1126,21 +1216,18 @@ mod tests {
         set_band_selection(&mut p, dec!(5), &[]);
         for band in &mut p.bands {
             if band.buildings == dec!(5) {
-                band.price = Some(PriceRule::Amount { value: dec!(250) });
+                band.price = Some(PriceRule::Amount { value: dec!(400) });
             }
         }
+        p.structure = server(dec!(130));
         let result = plan_project(&p);
         let year = &band_of(&result, dec!(5)).years[1];
 
-        // 9,960 of cost over 5 buildings, 250 of price, 2.9% of fee.
-        assert_eq!(year.cost_per_building, Some(dec!(1992)));
-        assert_eq!(year.price_per_building, Some(dec!(250)));
-        assert_eq!(year.profit_per_building, Some(dec!(-1749.25)));
-        // Price minus fee minus cost, per building.
-        assert_eq!(
-            year.profit_per_building,
-            Some(dec!(250) - dec!(250) * dec!(0.029) - dec!(1992))
-        );
+        // 12 × 130 of server = 1,560 of cost over 5 buildings, 400 of price.
+        assert_eq!(year.cost_per_building, Some(dec!(312)));
+        assert_eq!(year.price_per_building, Some(dec!(400)));
+        // Price minus cost, per building.
+        assert_eq!(year.profit_per_building, Some(dec!(88)));
     }
 
     #[test]
@@ -1158,6 +1245,8 @@ mod tests {
     #[test]
     fn a_recurring_service_with_a_fixed_price_bills_on_top_of_the_subscription() {
         let mut p = project(ProjectTemplate::BuildingOwners);
+        // Enough fixed cost that the subscription still has something to recover.
+        p.structure = server(dec!(800));
         for item in &mut p.onboarding {
             if item.id == "compliance-review" {
                 item.price = PriceRule::Amount { value: dec!(4800) }; // 3,000 cost
@@ -1167,9 +1256,27 @@ mod tests {
         let result = plan_project(&p);
         let band = band_of(&result, dec!(5));
 
-        assert_eq!(band.subscription.cost, dec!(9600) + dec!(360) + dec!(15000));
+        assert_eq!(band.subscription.cost, dec!(9600) + dec!(15000));
         assert!(band.subscription.price > dec!(24000));
         assert_eq!(band.onboarding.price, Decimal::ZERO);
+    }
+
+    #[test]
+    fn a_removed_element_is_neither_priced_nor_charged() {
+        let mut p = project(ProjectTemplate::BuildingOwners);
+        set_band_selection(&mut p, dec!(5), &["scan-to-bim", "measured-survey"]);
+        for item in &mut p.onboarding {
+            if item.id == "scan-to-bim" {
+                item.removed = true;
+            }
+        }
+        let result = plan_project(&p);
+        let band = band_of(&result, dec!(5));
+
+        assert!(result.onboarding_lines.iter().all(|l| l.id != "scan-to-bim"));
+        // Without the scan, the survey it used to cover is charged again.
+        assert_eq!(band.onboarding_ids, ["measured-survey"]);
+        assert!(band.blocked.is_empty());
     }
 
     #[test]
@@ -1274,16 +1381,6 @@ mod tests {
         }
         let result = plan_project(&p);
         assert!(result.warnings.iter().any(|w| w.contains("below its internal cost")));
-    }
-
-    #[test]
-    fn an_impossible_margin_suggests_no_price() {
-        let mut p = structure_only();
-        p.subscription_margin = dec!(0.98);
-        p.structure.fee_percent = dec!(0.05);
-        let result = plan_project(&p);
-        assert!(result.bands.iter().all(|b| b.suggested_subscription_price.is_none()));
-        assert!(result.warnings.iter().any(|w| w.contains("100%")));
     }
 
     #[test]

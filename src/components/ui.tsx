@@ -87,7 +87,8 @@ export function Card({
             {title && <h2 className="text-[17px] font-semibold tracking-tight text-ink">{title}</h2>}
             {description && <p className="mt-0.5 text-xs text-ink-2">{description}</p>}
           </div>
-          {actions}
+          {/* Pinned right, even when a long description pushes it onto its own line. */}
+          {actions && <div className="ml-auto">{actions}</div>}
         </header>
       )}
       {children}
